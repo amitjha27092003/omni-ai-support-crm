@@ -15,7 +15,9 @@ export async function POST(req: Request) {
       const senderName = (firstName + ' ' + lastName).trim() || 'Telegram User';
       const senderHandle = update.message.from?.username ? '@' + update.message.from.username : 'tg_' + chatId;
 
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      // Direct Live Production Domain
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://omniai-live-support.vercel.app';
+      
       const inboundRes = await fetch(`${baseUrl}/api/v1/inbound`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
