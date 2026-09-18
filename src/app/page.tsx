@@ -149,7 +149,7 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ticketId: selectedTicket.id,
-          chatId: selectedTicket.customer_handle,
+          chatId: selectedTicket.chat_id || undefined,
           message: replyText,
         }),
       });
@@ -193,7 +193,7 @@ export default function Dashboard() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Dispatch failed";
       console.error("[handleSend] Error:", err);
-      showToast(`Dispatch failed: ${msg}`, true);
+      showToast(msg, true);
     } finally {
       setIsSending(false);
     }

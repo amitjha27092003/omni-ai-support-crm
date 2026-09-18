@@ -20,6 +20,7 @@ function sanitizePII(text: string) {
 export async function POST(req: Request) {
   try {
     const update = await req.json();
+    console.log('[Telegram Webhook] Full update payload:', JSON.stringify(update, null, 2));
 
     // 1. Inline Button Callback Handling
     if (update.callback_query) {
@@ -139,7 +140,8 @@ export async function POST(req: Request) {
       executed_tool: executedTool || null,
       zkp_proof_hash: zkpHash,
       sentiment_trajectory: 'Neutral',
-      ai_reply: replyMessage
+      ai_reply: replyMessage,
+      chat_id: String(update.message?.chat?.id || msg.chat?.id)
     };
 
     let insertedId = '';

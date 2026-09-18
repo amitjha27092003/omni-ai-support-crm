@@ -15,44 +15,42 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { ticketId, message } = body;
-    let chatId = body.chatId;
 
     if (!message || typeof message !== "string" || !message.trim()) {
       return NextResponse.json({ error: "Message text is required" }, { status: 400 });
+    }
+
+    if (!ticketId) {
+      return NextResponse.json({ error: "ticketId is required" }, { status: 400 });
     }
 
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       auth: { persistSession: false },
     });
 
-    // If chatId is not passed directly, look up the ticket from Supabase
-    if (!chatId && ticketId) {
-      const { data: ticket, error: tckError } = await supabaseAdmin
-        .from("operational_tickets")
-        .select("customer_handle, channel")
-        .eq("id", ticketId)
-        .single();
+    // Read NUMERIC chat_id directly from DB for this ticket
+    const { data: ticket, error: tckError } = await supabaseAdmin
+      .from("operational_tickets")
+      .select("id, chat_id, customer_handle, customer_name, channel")
+      .eq("id", ticketId)
+      .single();
 
-      if (!tckError && ticket) {
-        const handle = ticket.customer_handle || "";
-        // If handle is like "tg_123456789" or contains numeric ID
-        const match = handle.match(/\d{5,}/);
-        if (match) {
-          chatId = match[0];
-        } else if (handle.startsWith("@")) {
-          chatId = handle;
-        }
-      }
+    if (tckError || !ticket) {
+      console.error("[dispatch-reply] Failed to fetch ticket:", tckError);
+      return NextResponse.json({ error: "Ticket not found in database" }, { status: 404 });
     }
 
-    if (!chatId) {
+    const numericChatId = ticket.chat_id || (body.chatId && /^\d+$/.test(String(body.chatId)) ? String(body.chatId) : null);
+
+    // Validate that numeric chat_id is present
+    if (!numericChatId) {
       return NextResponse.json(
-        { error: "chatId required for Telegram delivery. Customer handle must have a Telegram ID." },
+        { error: "User hasn't started the bot. Ask them to send /start." },
         { status: 400 }
       );
     }
 
-    // Dispatch message to Telegram Bot API
+    // Dispatch message to Telegram Bot API with numeric chat_id
     let telegramMessageId: number | null = null;
     try {
       const telegramRes = await fetch(
@@ -61,7 +59,7 @@ export async function POST(req: Request) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            chat_id: chatId,
+            chat_id: numericChatId,
             text: message,
             parse_mode: "Markdown",
           }),
@@ -70,14 +68,14 @@ export async function POST(req: Request) {
 
       const telegramData = await telegramRes.json();
       if (!telegramData.ok) {
-        // Fallback to plain text in case of markdown formatting issues
+        // Fallback to plain text in case of markdown parsing issues
         const retryRes = await fetch(
           `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              chat_id: chatId,
+              chat_id: numericChatId,
               text: message,
             }),
           }
@@ -101,22 +99,20 @@ export async function POST(req: Request) {
     }
 
     // Update ticket in Supabase with Resolved status and outbound message
-    if (ticketId) {
-      const now = new Date().toISOString();
-      await supabaseAdmin
-        .from("operational_tickets")
-        .update({
-          status: "Resolved",
-          ai_reply: message,
-          resolved_at: now,
-        })
-        .eq("id", ticketId);
-    }
+    const now = new Date().toISOString();
+    await supabaseAdmin
+      .from("operational_tickets")
+      .update({
+        status: "Resolved",
+        ai_reply: message,
+        resolved_at: now,
+      })
+      .eq("id", ticketId);
 
     return NextResponse.json({
       success: true,
       telegramMessageId,
-      deliveredAt: new Date().toISOString(),
+      deliveredAt: now,
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Internal Server Error";

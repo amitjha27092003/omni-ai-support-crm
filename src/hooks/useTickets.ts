@@ -28,6 +28,7 @@ export interface Ticket {
   suggested_reply: string;
   created_at: string;
   resolved_at?: string | null;
+  chat_id?: string | number | null;
   tool_action?: {
     toolName: string;
     actionTaken: boolean;
@@ -75,6 +76,7 @@ export const mapDbTicketToUi = (dbRow: Record<string, any>): Ticket => {
     suggested_reply: dbRow.ai_reply || "",
     created_at: dbRow.created_at || new Date().toISOString(),
     resolved_at: dbRow.resolved_at || null,
+    chat_id: dbRow.chat_id ? String(dbRow.chat_id) : null,
     tool_action: dbRow.executed_tool
       ? {
           toolName: dbRow.executed_tool,
@@ -99,7 +101,7 @@ export function useTickets() {
       const { data, error: sbError } = await supabase
         .from("operational_tickets")
         .select(
-          "id, channel, customer_name, customer_handle, original_message, sanitized_message, category_slug, status, confidence_score, ai_reply, created_at, resolved_at"
+          "id, channel, customer_name, customer_handle, original_message, sanitized_message, category_slug, status, confidence_score, ai_reply, created_at, resolved_at, chat_id"
         )
         .order("created_at", { ascending: false })
         .limit(100);
