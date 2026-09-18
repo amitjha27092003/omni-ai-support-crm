@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8600882660:AAFbSJEpimvWuLls5jsaEBXE4JmG7hfKzSc';const SUPABASE_URL = 'https://bpgrpmdjpydmlonbeag.supabase.co';
-const SUPABASE_ANON_KEY =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwZ3JwbWRqcHlkbWxvbmJlYWciLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc1MjYxMDk2MywiZXhwIjoyMDY4MTg2OTY0fQ.mIGYvcVHeCmhNGvBfbm5im1ih-r5oWkBdBFHgZ-wX0A';
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8600882660:AAFbSJEpimvWuLls5jsaEBXE4JmG7hfKzSc';
+const SUPABASE_URL = 'https://bpgrpmdjpydmlonbeag.supabase.co';
+const SUPABASE_SERVICE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwZ3JwbWRqcGR5ZG1sb25iZWFnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4OTY0NDEzNSwiZXhwIjoyMTA1MjIwMTM1fQ.IS-4Da9UsTAG9hXvBabiA8Tal_dCTMVF5Ap04T3nnDw';
 
 function sanitizePII(text: string) {
   let masked = text;
@@ -17,40 +18,18 @@ function sanitizePII(text: string) {
 export async function POST(req: Request) {
   try {
     const update = await req.json();
-    console.log('INCOMING_TELEGRAM_UPDATE:', JSON.stringify(update));
 
-    // Handle standard message or edited message
     const msg = update.message || update.edited_message;
 
-    // Handle button callbacks if clicked
     if (update.callback_query) {
       const cbChatId = update.callback_query.message?.chat?.id;
       if (cbChatId) {
-        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: cbChatId,
-            text: '👌 Status acknowledged by operator.',
-            parse_mode: 'Markdown'
-          })
-        });
-      }
-      return NextResponse.json({ ok: true });
-    }
-
-    if (msg && msg.text) {
-      const chatId = msg.chat?.id;
-      const rawText = msg.text;
-
-      if (rawText.trim() === '/start') {
-        if (chatId) {
-          await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {           method: 'POST',           headers: { 'Content-Type': 'application/json' },           body: JSON.stringify({             chat_id: cbChatId,             text: '👌 Status acknowledged by operator.',             parse_mode: 'Markdown'           })         });       }       return NextResponse.json({ ok: true });     }      if (msg && msg.text) {       const chatId = msg.chat?.id;       const rawText = msg.text;        if (rawText.trim() === '/start') {         if (chatId) {           await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: chatId,
-              text: '👋 *Welcome to OmniAI Ops Support Engine!*\n\nSend your issue or inquiry directly here.',
+              text: '👋 *OmniAI Ops Bot Connected!*\n\nSend your issue or inquiry directly here.',
               parse_mode: 'Markdown'
             })
           });
@@ -69,7 +48,7 @@ export async function POST(req: Request) {
       const isRefund = /refund|money back|transaction|payment/i.test(sanitized);
       const isEscalation = /fraud|urgent|legal|human|agent/i.test(sanitized);
 
-      let status = 'AI Resolved';
+      let status = 'Open';
       let confidence = 95;
       let executedTool = 'stripe_recon_agent';
       let replyMessage = '✅ Your refund request has been analyzed and processed autonomously via shadow execution.';
@@ -86,7 +65,6 @@ export async function POST(req: Request) {
         replyMessage = '🤖 Your inquiry is being analyzed by OmniAI autonomous support cluster.';
       }
 
-      // Supabase POST
       const dbPayload = {
         channel: 'Telegram',
         customer_name: senderName,
@@ -101,21 +79,20 @@ export async function POST(req: Request) {
         ai_reply: replyMessage
       };
 
-      const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/operational_tickets`, {
-        method: 'POST',
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=representation'
-        },
-        body: JSON.stringify(dbPayload)
-      });
+      try {
+        const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/operational_tickets`, {           method: 'POST',           headers: {             'apikey': SUPABASE_SERVICE_KEY,             'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify(dbPayload)
+        });
 
-      const responseText = await dbRes.text();
-      console.log('SUPABASE_RAW_RESPONSE:', responseText);
+        const resText = await dbRes.text();
+        console.log('SUPABASE_INGESTION_STATUS:', dbRes.status, resText);
+      } catch (e) {
+        console.error('SUPABASE_FETCH_EXCEPTION:', e);
+      }
 
-      // Reply back to Telegram
       if (chatId) {
         let finalReply = replyMessage;
         if (executedTool) {
@@ -144,7 +121,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {
-    console.error('Fatal Webhook Error:', err);
+    console.error('FATAL_POST_ERROR:', err);
     return NextResponse.json({ ok: false, error: err?.message }, { status: 200 });
   }
 }
