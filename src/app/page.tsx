@@ -48,6 +48,11 @@ type Ticket = {
   internal_note?: string;
   suggested_reply: string;
   created_at: string;
+  tool_action?: {
+    toolName: string;
+    actionTaken: boolean;
+    message: string;
+  };
 };
 
 type AgentLog = {
@@ -192,7 +197,7 @@ export default function Dashboard() {
         }
       }
     } catch {
-      // fallback
+      // offline fallback
     }
 
     setTickets((prev) => (prev.length > 0 ? prev : initialFallbackTickets));
@@ -259,22 +264,38 @@ export default function Dashboard() {
           channel: selectedTicket.channel,
           tone,
           groundingContext,
+          ticketId: selectedTicket.id,
         }),
       });
 
       if (res.ok) {
         const data = await res.json();
         const generated = data.reply || data.suggested_reply;
+        const toolExecuted = data.toolExecuted;
+
+        if (toolExecuted?.actionTaken) {
+          addLog("DISPATCH", `Autonomous Action: ${toolExecuted.toolName} -> ${toolExecuted.message}`);
+        }
+
         if (generated) {
           setReplyText(generated);
           setTickets((prev) =>
             prev.map((t) =>
-              t.id === selectedTicket.id ? { ...t, suggested_reply: generated } : t
+              t.id === selectedTicket.id
+                ? { ...t, suggested_reply: generated, tool_action: toolExecuted }
+                : t
             )
+          );
+          setSelectedTicket((prev) =>
+            prev ? { ...prev, suggested_reply: generated, tool_action: toolExecuted } : null
           );
           setIsLoadingAI(false);
           addLog("AGENT", `Inference complete (Confidence: ${selectedTicket.confidence}%)`);
-          showToast(`Reply tuned to ${tone} tone`);
+          showToast(
+            toolExecuted?.actionTaken
+              ? `Executed: ${toolExecuted.toolName}`
+              : `Reply tuned to ${tone} tone`
+          );
           return;
         }
       }
@@ -311,7 +332,7 @@ export default function Dashboard() {
         }),
       });
     } catch {
-      // fallback
+      // offline fallback
     }
 
     setTickets((prev) =>
@@ -862,6 +883,18 @@ export default function Dashboard() {
                       <div>
                         <span className="font-semibold text-blue-400">Grounding Policy Reference: </span>
                         <span>{selectedTicket.kb_context}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Autonomous Tool Execution Badge */}
+                  {selectedTicket.tool_action && selectedTicket.tool_action.actionTaken && (
+                    <div className="bg-emerald-950/20 border border-emerald-800/40 rounded-lg p-3 text-xs flex items-start gap-2.5 text-emerald-300 animate-in fade-in duration-200">
+                      <Zap className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-semibold text-emerald-400">Autonomous Tool Executed: </span>
+                        <span className="font-mono text-emerald-200">[{selectedTicket.tool_action.toolName}]</span>
+                        <p className="mt-1 text-slate-300">{selectedTicket.tool_action.message}</p>
                       </div>
                     </div>
                   )}
