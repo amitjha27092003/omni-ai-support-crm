@@ -67,7 +67,7 @@ type KBArticle = {
   active: boolean;
 };
 
-// Map Supabase DB schema to UI structure
+// Map Supabase DB schema to UI structure cleanly
 const mapDbTicketToUi = (dbRow: any): Ticket => {
   let mappedStatus: Ticket["status"] = "Pending";
   if (dbRow.status === "Resolved") mappedStatus = "Resolved";
@@ -82,9 +82,9 @@ const mapDbTicketToUi = (dbRow: any): Ticket => {
     status: mappedStatus,
     priority: dbRow.status === "Escalated" ? "High" : "Medium",
     sentiment: (dbRow.sentiment_trajectory as any) || "Neutral",
-    confidence: Number(dbRow.confidence_score) || 90,
+    confidence: Number(dbRow.confidence_score) || 92,
     slaMinutesLeft: mappedStatus === "Resolved" || mappedStatus === "AI Resolved" ? 0 : 15,
-    kb_context: dbRow.zkp_proof_hash ? `ZKP Proof: ${dbRow.zkp_proof_hash}` : undefined,
+    kb_context: dbRow.zkp_proof_hash ? `ZKP Hash: ${dbRow.zkp_proof_hash}` : undefined,
     suggested_reply: dbRow.ai_reply || "",
     created_at: dbRow.created_at || new Date().toISOString(),
     tool_action: dbRow.executed_tool
@@ -104,11 +104,10 @@ export default function Dashboard() {
   const [internalNote, setInternalNote] = useState("");
   const [activeTab, setActiveTab] = useState<"reply" | "notes">("reply");
   const [filterStatus, setFilterStatus] = useState<"All" | "Pending" | "AI Resolved" | "Escalated" | "Resolved">("All");
-  const [filterChannel, setFilterChannel] = useState<"All" | "WhatsApp" | "Telegram" | "Email" | "Lark">("All");
+  const [filterChannel, setFilterChannel] = useState<"All" | "Telegram" | "WhatsApp" | "Email" | "Lark">("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoadingAI, setIsLoadingAI] = useState(false);
   const [isAutoPiloting, setIsAutoPiloting] = useState(false);
-  const [isLiveSimulating, setIsLiveSimulating] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -141,7 +140,6 @@ export default function Dashboard() {
     },
   ]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const addLog = (level: "INFO" | "AGENT" | "DISPATCH", message: string) => {
     const newLog: AgentLog = {
@@ -160,7 +158,7 @@ export default function Dashboard() {
     }, 3500);
   };
 
-  // Direct Supabase Ingestion Query
+  // Pure Supabase Database Fetch (No Static Fallbacks)
   const fetchTickets = async () => {
     setIsFetching(true);
     try {
@@ -169,13 +167,19 @@ export default function Dashboard() {
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (data && !error && data.length > 0) {
+      if (data && !error) {
         const mapped = data.map(mapDbTicketToUi);
         setTickets(mapped);
-        if (!selectedTicket) {
-          setSelectedTicket(mapped[0]);
-          setReplyText(mapped[0].suggested_reply || "");
+        if (mapped.length > 0) {
+          setSelectedTicket((curr) => {
+            if (!curr) return mapped[0];
+            const found = mapped.find((m) => m.id === curr.id);
+            return found || mapped[0];
+          });
+          setReplyText((curr) => (!curr && mapped[0] ? mapped[0].suggested_reply : curr));
         }
+      } else if (error) {
+        console.error("Supabase Query Error:", error);
       }
     } catch (err) {
       console.error("Fetch tickets error:", err);
@@ -189,18 +193,15 @@ export default function Dashboard() {
 
     // Supabase Realtime Listener on operational_tickets
     const channel = supabase
-      .channel("tickets-realtime-live-sync")
+      .channel("tickets-realtime-live-feed")
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "operational_tickets" },
         (payload) => {
           const newTck = mapDbTicketToUi(payload.new);
-          setTickets((prev) => {
-            if (prev.some((t) => t.id === newTck.id)) return prev;
-            return [newTck, ...prev];
-          });
-          addLog("INFO", `Realtime Ingest: #${newTck.id.slice(0, 6)} from ${newTck.customer}`);
-          showToast(`Inbound: ${newTck.customer} via ${newTck.channel}`);
+          setTickets((prev) => [newTck, ...prev.filter((t) => t.id !== newTck.id)]);
+          addLog("INFO", `Realtime Inbound: [${newTck.channel}] from ${newTck.customer}`);
+          showToast(`New Inbound: ${newTck.customer}`);
         }
       )
       .on(
@@ -214,15 +215,19 @@ export default function Dashboard() {
           setSelectedTicket((prev) =>
             prev && prev.id === updated.id ? { ...prev, ...updated } : prev
           );
-          addLog("DISPATCH", `State Sync: #${updated.id.slice(0, 6)} is now ${updated.status}`);
+          addLog("DISPATCH", `State Sync: #${updated.id.slice(0, 6)} -> ${updated.status}`);
           showToast(`Status updated: ${updated.status}`);
         }
       )
       .subscribe();
 
+    const interval = setInterval(() => {
+      fetchTickets();
+    }, 5000);
+
     return () => {
       supabase.removeChannel(channel);
-      if (timerRef.current) clearInterval(timerRef.current);
+      clearInterval(interval);
     };
   }, []);
 
@@ -275,7 +280,7 @@ export default function Dashboard() {
       setSelectedTicket((prev) =>
         prev ? { ...prev, status: "Resolved", suggested_reply: replyText, slaMinutesLeft: 0 } : null
       );
-      addLog("DISPATCH", `Dispatched reply to ${selectedTicket.customer}`);
+      addLog("DISPATCH", `Dispatched response to ${selectedTicket.customer}`);
       showToast(`Response dispatched!`);
     } catch (err) {
       console.error(err);
@@ -308,7 +313,7 @@ export default function Dashboard() {
 
   const handleAutoPilotResolveAll = async () => {
     setIsAutoPiloting(true);
-    addLog("AGENT", `Auto-Pilot sequence initialized for ${stats.pending} pending tickets`);
+    addLog("AGENT", `Auto-Pilot sequence initialized`);
     showToast("Auto-Pilot active: resolving queue...");
 
     try {
@@ -349,7 +354,7 @@ export default function Dashboard() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `OmniAI_Export_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute("download", `OmniAI_Live_Tickets_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -486,7 +491,9 @@ export default function Dashboard() {
 
           <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
             {filteredTickets.length === 0 ? (
-              <div className="p-8 text-center text-xs text-slate-400">No live tickets found. Send a message on Telegram!</div>
+              <div className="p-8 text-center text-xs text-slate-400">
+                {isFetching ? "Syncing tickets from database..." : "No tickets found. Send a message on Telegram bot!"}
+              </div>
             ) : (
               filteredTickets.map((t) => (
                 <div
@@ -633,7 +640,7 @@ export default function Dashboard() {
                   <div className="mt-3.5 flex justify-between items-center">
                     <div className="text-xs text-slate-500 flex items-center gap-1.5 font-medium">
                       <Share2 className="w-3.5 h-3.5 text-blue-600" />
-                      Target: <span className="text-slate-800 font-semibold">{selectedTicket.channel} API</span>
+                      Target: <span className="text-slate-800 font-semibold">{selectedTicket.channel} Outbound Gateway</span>
                     </div>
                     <button
                       onClick={handleSend}
