@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8600882660:AAFbSJEpimvWuLls5jsaEBXE4JmG7hfKzSc';
+// Primary active token with fallback to previous bot
+const TELEGRAM_BOT_TOKEN =
+  process.env.TELEGRAM_BOT_TOKEN ||
+  '8600882660:AAFbSJEpimvWuLls5jsaEBXE4JmG7hfKzSc';
+
 const SUPABASE_URL = 'https://bpgrpmdjpydmlonbeag.supabase.co';
-const SUPABASE_SERVICE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwZ3JwbWRqcGR5ZG1sb25iZWFnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4OTY0NDEzNSwiZXhwIjoyMTA1MjIwMTM1fQ.IS-4Da9UsTAG9hXvBabiA8Tal_dCTMVF5Ap04T3nnDw';
+const SUPABASE_ANON_KEY =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwZ3JwbWRqcHlkbWxvbmJlYWciLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc1MjYxMDk2MywiZXhwIjoyMDY4MTg2OTY0fQ.mIGYvcVHeCmhNGvBfbm5im1ih-r5oWkBdBFHgZ-wX0A';
 
 function sanitizePII(text: string) {
   let masked = text;
@@ -18,110 +22,120 @@ function sanitizePII(text: string) {
 export async function POST(req: Request) {
   try {
     const update = await req.json();
-
     const msg = update.message || update.edited_message;
 
-    if (update.callback_query) {
-      const cbChatId = update.callback_query.message?.chat?.id;
-      if (cbChatId) {
-        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {           method: 'POST',           headers: { 'Content-Type': 'application/json' },           body: JSON.stringify({             chat_id: cbChatId,             text: '👌 Status acknowledged by operator.',             parse_mode: 'Markdown'           })         });       }       return NextResponse.json({ ok: true });     }      if (msg && msg.text) {       const chatId = msg.chat?.id;       const rawText = msg.text;        if (rawText.trim() === '/start') {         if (chatId) {           await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: chatId,
-              text: '👋 *OmniAI Ops Bot Connected!*\n\nSend your issue or inquiry directly here.',
-              parse_mode: 'Markdown'
-            })
-          });
-        }
-        return NextResponse.json({ ok: true });
-      }
+    if (!msg || !msg.text) {
+      return NextResponse.json({ ok: true });
+    }
 
-      const firstName = msg.from?.first_name || '';
-      const lastName = msg.from?.last_name || '';
-      const senderName = (firstName + ' ' + lastName).trim() || 'Telegram User';
-      const senderHandle = msg.from?.username ? '@' + msg.from.username : 'tg_' + chatId;
+    const chatId = msg.chat?.id;
+    const rawText = msg.text;
 
-      const sanitized = sanitizePII(rawText);
-      const zkpHash = 'zkp_' + crypto.createHash('sha256').update(rawText + Date.now()).digest('hex').substring(0, 16);
-
-      const isRefund = /refund|money back|transaction|payment/i.test(sanitized);
-      const isEscalation = /fraud|urgent|legal|human|agent/i.test(sanitized);
-
-      let status = 'Open';
-      let confidence = 95;
-      let executedTool = 'stripe_recon_agent';
-      let replyMessage = '✅ Your refund request has been analyzed and processed autonomously via shadow execution.';
-
-      if (!isRefund && isEscalation) {
-        status = 'Escalated';
-        confidence = 65;
-        executedTool = '';
-        replyMessage = '⚠️ Your request contains high-priority indicators and has been escalated to Tier-2 Operations.';
-      } else if (!isRefund && !isEscalation) {
-        status = 'AI In-Progress';
-        confidence = 88;
-        executedTool = '';
-        replyMessage = '🤖 Your inquiry is being analyzed by OmniAI autonomous support cluster.';
-      }
-
-      const dbPayload = {
-        channel: 'Telegram',
-        customer_name: senderName,
-        customer_handle: senderHandle,
-        original_message: rawText,
-        sanitized_message: sanitized,
-        status: status,
-        confidence_score: confidence,
-        executed_tool: executedTool || null,
-        zkp_proof_hash: zkpHash,
-        sentiment_trajectory: 'Neutral',
-        ai_reply: replyMessage
-      };
-
-      try {
-        const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/operational_tickets`, {           method: 'POST',           headers: {             'apikey': SUPABASE_SERVICE_KEY,             'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=minimal'
-          },
-          body: JSON.stringify(dbPayload)
-        });
-
-        const resText = await dbRes.text();
-        console.log('SUPABASE_INGESTION_STATUS:', dbRes.status, resText);
-      } catch (e) {
-        console.error('SUPABASE_FETCH_EXCEPTION:', e);
-      }
-
+    if (rawText.trim() === '/start') {
       if (chatId) {
-        let finalReply = replyMessage;
-        if (executedTool) {
-          finalReply += `\n\n⚡ *Autonomous Action:* \`${executedTool}\`\n🔐 *ZKP Proof:* \`${zkpHash}\``;
-        }
-
         await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
-            text: finalReply,
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  { text: '✅ Acknowledge', callback_data: 'ack_ok' },
-                  { text: '👤 Human Agent', callback_data: 'talk_agent' }
-                ]
-              ]
-            }
+            text: '👋 *OmniAI Ops Bot Connected!*\n\nSend your ticket inquiry to begin.',
+            parse_mode: 'Markdown'
           })
         });
       }
+      return NextResponse.json({ ok: true });
+    }
+
+    const firstName = msg.from?.first_name || '';
+    const lastName = msg.from?.last_name || '';
+    const senderName = (firstName + ' ' + lastName).trim() || 'Telegram User';
+    const senderHandle = msg.from?.username ? '@' + msg.from.username : 'tg_' + chatId;
+
+    const sanitized = sanitizePII(rawText);
+    const zkpHash = 'zkp_' + crypto.createHash('sha256').update(rawText + Date.now()).digest('hex').substring(0, 16);
+
+    const isRefund = /refund|money back|transaction|payment/i.test(sanitized);
+    const isEscalation = /fraud|urgent|legal|human|agent/i.test(sanitized);
+
+    let status = 'AI Resolved';
+    let confidence = 95;
+    let executedTool = 'stripe_recon_agent';
+    let replyMessage = '✅ Your refund request has been analyzed and processed autonomously via shadow execution.';
+
+    if (!isRefund && isEscalation) {
+      status = 'Escalated';
+      confidence = 65;
+      executedTool = '';
+      replyMessage = '⚠️ Your request contains high-priority indicators and has been escalated to Tier-2 Operations.';
+    } else if (!isRefund && !isEscalation) {
+      status = 'AI In-Progress';
+      confidence = 88;
+      executedTool = '';
+      replyMessage = '🤖 Your inquiry is being analyzed by OmniAI autonomous support cluster.';
+    }
+
+    // 1. Guaranteed Telegram response execution first
+    if (chatId) {
+      let finalReply = replyMessage;
+      if (executedTool) {
+        finalReply += `\n\n⚡ *Autonomous Action:* \`${executedTool}\`\n🔐 *ZKP Proof:* \`${zkpHash}\``;
+      }
+
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: finalReply,
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '✅ Acknowledge', callback_data: 'ack_ok' },
+                { text: '👤 Human Agent', callback_data: 'talk_agent' }
+              ]
+            ]
+          }
+        })
+      });
+    }
+
+    // 2. Supabase Ingestion via REST
+    const dbPayload = {
+      channel: 'Telegram',
+      customer_name: senderName,
+      customer_handle: senderHandle,
+      original_message: rawText,
+      sanitized_message: sanitized,
+      status: status,
+      confidence_score: confidence,
+      executed_tool: executedTool || null,
+      zkp_proof_hash: zkpHash,
+      sentiment_trajectory: 'Neutral',
+      ai_reply: replyMessage
+    };
+
+    const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/operational_tickets`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(dbPayload)
+    });
+
+    if (!dbRes.ok) {
+      const errText = await dbRes.text();
+      console.error('SUPABASE_INGESTION_ERROR:', dbRes.status, errText);
+    } else {
+      console.log('SUPABASE_INGESTION_SUCCESS');
     }
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {
-    console.error('FATAL_POST_ERROR:', err);
-    return NextResponse.json({ ok: false, error: err?.message }, { status: 200 });
+    console.error('CRITICAL_WEBHOOK_HANDLER_ERROR:', err);
+    return NextResponse.json({ ok: true }, { status: 200 });
   }
 }
