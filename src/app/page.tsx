@@ -32,7 +32,6 @@ import {
   Database,
   Trash2,
   Share2,
-  Flame,
 } from "lucide-react";
 
 type Ticket = {
@@ -193,7 +192,7 @@ export default function Dashboard() {
         }
       }
     } catch {
-      // offline fallback
+      // fallback
     }
 
     setTickets((prev) => (prev.length > 0 ? prev : initialFallbackTickets));
@@ -244,21 +243,35 @@ export default function Dashboard() {
     setIsLoadingAI(true);
     addLog("AGENT", `Triggering Gemini inference for ${selectedTicket.customer} (Tone: ${tone})`);
 
+    const groundingContext = kbArticles
+      .filter((a) => a.active)
+      .map((a) => `[${a.topic}]: ${a.content}`)
+      .join("\n");
+
     try {
-      const res = await fetch("/generate-reply", {
+      const res = await fetch("/api/generate-reply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          query: selectedTicket.message,
           customerMessage: selectedTicket.message,
           customerName: selectedTicket.customer,
           channel: selectedTicket.channel,
           tone,
+          groundingContext,
         }),
       });
+
       if (res.ok) {
         const data = await res.json();
-        if (data.reply) {
-          setReplyText(data.reply);
+        const generated = data.reply || data.suggested_reply;
+        if (generated) {
+          setReplyText(generated);
+          setTickets((prev) =>
+            prev.map((t) =>
+              t.id === selectedTicket.id ? { ...t, suggested_reply: generated } : t
+            )
+          );
           setIsLoadingAI(false);
           addLog("AGENT", `Inference complete (Confidence: ${selectedTicket.confidence}%)`);
           showToast(`Reply tuned to ${tone} tone`);
@@ -298,7 +311,7 @@ export default function Dashboard() {
         }),
       });
     } catch {
-      // offline fallback
+      // fallback
     }
 
     setTickets((prev) =>
@@ -720,11 +733,13 @@ export default function Dashboard() {
                     <span className="font-medium text-sm text-slate-200">{t.customer}</span>
                     <div className="flex items-center gap-1.5">
                       {t.status === "Pending" && (
-                        <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
-                          t.slaMinutesLeft < 10
-                            ? "text-rose-400 bg-rose-950/40 border border-rose-800/40 animate-pulse"
-                            : "text-slate-400 bg-slate-850"
-                        }`}>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                            t.slaMinutesLeft < 10
+                              ? "text-rose-400 bg-rose-950/40 border border-rose-800/40 animate-pulse"
+                              : "text-slate-400 bg-slate-850"
+                          }`}
+                        >
                           {t.slaMinutesLeft}m SLA
                         </span>
                       )}
@@ -735,15 +750,17 @@ export default function Dashboard() {
                   </div>
                   <p className="text-xs text-slate-400 truncate mb-2">{t.message}</p>
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className={`text-[10px] px-2 py-0.5 rounded border ${
-                      t.channel === "WhatsApp"
-                        ? "bg-emerald-950/30 border-emerald-800/40 text-emerald-400"
-                        : t.channel === "Telegram"
-                        ? "bg-sky-950/30 border-sky-800/40 text-sky-400"
-                        : t.channel === "Lark"
-                        ? "bg-blue-950/40 border-blue-700/40 text-blue-300"
-                        : "bg-slate-800 border-slate-700 text-slate-300"
-                    }`}>
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded border ${
+                        t.channel === "WhatsApp"
+                          ? "bg-emerald-950/30 border-emerald-800/40 text-emerald-400"
+                          : t.channel === "Telegram"
+                          ? "bg-sky-950/30 border-sky-800/40 text-sky-400"
+                          : t.channel === "Lark"
+                          ? "bg-blue-950/40 border-blue-700/40 text-blue-300"
+                          : "bg-slate-800 border-slate-700 text-slate-300"
+                      }`}
+                    >
                       {t.channel}
                     </span>
                     <span
@@ -860,7 +877,15 @@ export default function Dashboard() {
                       <span>Gemini Agent Drafted</span>
                     </div>
                     <div className="h-px w-8 bg-slate-800" />
-                    <div className={`flex items-center gap-1.5 ${selectedTicket.status === "AI Resolved" ? "text-emerald-400" : selectedTicket.status === "Escalated" ? "text-rose-400" : "text-amber-400"}`}>
+                    <div
+                      className={`flex items-center gap-1.5 ${
+                        selectedTicket.status === "AI Resolved"
+                          ? "text-emerald-400"
+                          : selectedTicket.status === "Escalated"
+                          ? "text-rose-400"
+                          : "text-amber-400"
+                      }`}
+                    >
                       <CheckCircle2 className="w-3 h-3" />
                       <span>{selectedTicket.status}</span>
                     </div>
@@ -1020,7 +1045,10 @@ export default function Dashboard() {
               <div className="flex items-center gap-2 font-bold text-white text-base">
                 <Database className="w-5 h-5 text-indigo-400" /> Autonomous Knowledge Base (RAG Grounding)
               </div>
-              <button onClick={() => setShowKBModal(false)} className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white">
+              <button
+                onClick={() => setShowKBModal(false)}
+                className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -1053,7 +1081,10 @@ export default function Dashboard() {
 
             <div className="flex-1 overflow-y-auto space-y-2 pr-1">
               {kbArticles.map((art) => (
-                <div key={art.id} className="p-3 bg-slate-950 border border-slate-800/80 rounded-lg flex items-start justify-between gap-3">
+                <div
+                  key={art.id}
+                  className="p-3 bg-slate-950 border border-slate-800/80 rounded-lg flex items-start justify-between gap-3"
+                >
                   <div>
                     <div className="text-xs font-semibold text-indigo-400 mb-1">{art.topic}</div>
                     <p className="text-xs text-slate-300">{art.content}</p>
