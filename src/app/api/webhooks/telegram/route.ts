@@ -1,14 +1,9 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 
-// Primary active token with fallback to previous bot
-const TELEGRAM_BOT_TOKEN =
-  process.env.TELEGRAM_BOT_TOKEN ||
-  '8600882660:AAFbSJEpimvWuLls5jsaEBXE4JmG7hfKzSc';
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bpgrpmdjpydmlonbeag.supabase.co';
+const TELEGRAM_BOT_TOKEN = '8600882660:AAFbSJEpimvWuLls5jsaEBXE4JmG7hfKzSc';
+const SUPABASE_URL = 'https://bpgrpmdjpydmlonbeag.supabase.co';
 const SUPABASE_ANON_KEY =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwZ3JwbWRqcHlkbWxvbmJlYWciLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc1MjYxMDk2MywiZXhwIjoyMDY4MTg2OTY0fQ.mIGYvcVHeCmhNGvBfbm5im1ih-r5oWkBdBFHgZ-wX0A';
 
 function sanitizePII(text: string) {
@@ -74,7 +69,7 @@ export async function POST(req: Request) {
       replyMessage = '🤖 Your inquiry is being analyzed by OmniAI autonomous support cluster.';
     }
 
-    // 1. Guaranteed Telegram response execution first
+    // Direct Telegram Response Send
     if (chatId) {
       let finalReply = replyMessage;
       if (executedTool) {
@@ -100,7 +95,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // 2. Supabase Ingestion via REST
+    // Direct Supabase POST Ingestion
     const dbPayload = {
       channel: 'Telegram',
       customer_name: senderName,
@@ -115,27 +110,25 @@ export async function POST(req: Request) {
       ai_reply: replyMessage
     };
 
-    const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/operational_tickets`, {
+    const targetUrl = 'https://bpgrpmdjpydmlonbeag.supabase.co/rest/v1/operational_tickets';
+
+    const dbRes = await fetch(targetUrl, {
       method: 'POST',
       headers: {
         'apikey': SUPABASE_ANON_KEY,
         'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
         'Content-Type': 'application/json',
-        'Prefer': 'return=representation'
+        'Prefer': 'return=minimal'
       },
       body: JSON.stringify(dbPayload)
     });
 
-    if (!dbRes.ok) {
-      const errText = await dbRes.text();
-      console.error('SUPABASE_INGESTION_ERROR:', dbRes.status, errText);
-    } else {
-      console.log('SUPABASE_INGESTION_SUCCESS');
-    }
+    const dbResultText = await dbRes.text();
+    console.log('SUPABASE_DIRECT_STATUS:', dbRes.status, dbResultText);
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {
-    console.error('CRITICAL_WEBHOOK_HANDLER_ERROR:', err);
+    console.error('CRITICAL_WEBHOOK_ERROR:', err);
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 }
