@@ -3,8 +3,8 @@ import crypto from 'crypto';
 
 const TELEGRAM_BOT_TOKEN = '8600882660:AAFbSJEpimvWuLls5jsaEBXE4JmG7hfKzSc';
 const SUPABASE_URL = 'https://bpgrpmdjpdydmlonbeag.supabase.co';
-const SUPABASE_ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwZ3JwbWRqcGR5ZG1sb25iZWFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI2MTA5NjMsImV4cCI6MjA2ODE4Njk2NH0.mIGYvcVHeCmhNGvBfbm5im1ih-r5oWkBdBFHgZ-wX0A';
+const SUPABASE_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwZ3JwbWRqcGR5ZG1sb25iZWFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NDQxMzUsImV4cCI6MjEwNTIyMDEzNX0.mIGYvcVHeCmhNGvBfbm5imlih-r5oWkBdBFHgZ-wX0A';
 
 function sanitizePII(text: string) {
   let masked = text;
@@ -69,7 +69,7 @@ export async function POST(req: Request) {
       replyMessage = '🤖 Your inquiry is being analyzed by OmniAI autonomous support cluster.';
     }
 
-    // 1. Supabase me data insert karo
+    // 1. Supabase me ticket insert karo
     const dbPayload = {
       channel: 'Telegram',
       customer_name: senderName,
@@ -88,8 +88,8 @@ export async function POST(req: Request) {
       const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/operational_tickets`, {
         method: 'POST',
         headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
           'Content-Type': 'application/json',
           'Prefer': 'return=representation'
         },
@@ -99,10 +99,10 @@ export async function POST(req: Request) {
       const resBody = await dbRes.text();
       console.log('SUPABASE_INGESTION_STATUS:', dbRes.status, resBody);
     } catch (dbErr) {
-      console.error('SUPABASE_DIRECT_CALL_ERROR:', dbErr);
+      console.error('SUPABASE_FETCH_ERR:', dbErr);
     }
 
-    // 2. Telegram par reply bhejo
+    // 2. Telegram user ko response bhejo
     if (chatId) {
       let finalReply = replyMessage;
       if (executedTool) {
@@ -130,7 +130,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {
-    console.error('WEBHOOK_CRITICAL_ERR:', err);
+    console.error('CRITICAL_WEBHOOK_HANDLER_ERROR:', err);
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 }
