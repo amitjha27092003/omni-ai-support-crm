@@ -353,6 +353,20 @@ export default function Dashboard() {
   const handleEscalate = async () => {
     if (!selectedTicket) return;
 
+    try {
+      await fetch("/api/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update",
+          ticketId: selectedTicket.id,
+          status: "Escalated",
+        }),
+      });
+    } catch (err) {
+      console.error("Escalate persistence error:", err);
+    }
+
     setTickets((prev) =>
       prev.map((t) =>
         t.id === selectedTicket.id
@@ -375,6 +389,24 @@ export default function Dashboard() {
 
     await new Promise((r) => setTimeout(r, 1200));
 
+    // Batch update pending tickets to database
+    const pendingTickets = tickets.filter((t) => t.status === "Pending");
+    for (const t of pendingTickets) {
+      try {
+        await fetch("/api/tickets", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "update",
+            ticketId: t.id,
+            status: "AI Resolved",
+          }),
+        });
+      } catch {
+        // continue
+      }
+    }
+
     setTickets((prev) =>
       prev.map((t) => (t.status === "Pending" ? { ...t, status: "AI Resolved", slaMinutesLeft: 0 } : t))
     );
@@ -388,8 +420,23 @@ export default function Dashboard() {
     showToast("Autonomous sweep complete: Pending tickets resolved!");
   };
 
-  const handleSaveInternalNote = () => {
+  const handleSaveInternalNote = async () => {
     if (!selectedTicket) return;
+
+    try {
+      await fetch("/api/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update",
+          ticketId: selectedTicket.id,
+          internal_note: internalNote,
+        }),
+      });
+    } catch (err) {
+      console.error("Internal note sync error:", err);
+    }
+
     setTickets((prev) =>
       prev.map((t) => (t.id === selectedTicket.id ? { ...t, internal_note: internalNote } : t))
     );
@@ -513,8 +560,19 @@ export default function Dashboard() {
     };
   };
 
-  const handleSimulateNewTicket = () => {
+  const handleSimulateNewTicket = async () => {
     const newTicket = generateRandomTicket();
+    
+    try {
+      await fetch("/api/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newTicket),
+      });
+    } catch {
+      // continue locally
+    }
+
     setTickets((prev) => [newTicket, ...prev]);
     setSelectedTicket(newTicket);
     setReplyText(newTicket.suggested_reply);
@@ -533,8 +591,17 @@ export default function Dashboard() {
       setIsLiveSimulating(true);
       addLog("INFO", "Real-time inbound stream active: listening on port 3000");
       showToast("Live simulation started: auto-receiving tickets every 6s");
-      timerRef.current = setInterval(() => {
+      timerRef.current = setInterval(async () => {
         const ticket = generateRandomTicket();
+        try {
+          await fetch("/api/tickets", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(ticket),
+          });
+        } catch {
+          // continue locally
+        }
         setTickets((prev) => [ticket, ...prev]);
         addLog("INFO", `New inbound event: ${ticket.customer} [${ticket.channel}]`);
       }, 6000);
