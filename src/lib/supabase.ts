@@ -1,16 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://bpgrpmdjpydmlonbeag.supabase.co';
-const supabaseKey =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwZ3JwbWRqcHlkbWxvbmJlYWciLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc1MjYxMDk2MywiZXhwIjoyMDY4MTg2OTY0fQ.mIGYvcVHeCmhNGvBfbm5im1ih-r5oWkBdBFHgZ-wX0A';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bpgrpmdjpydmlonbeag.supabase.co';
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwZ3JwbWRqcGR5ZG1sb25iZWFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NDQxMzUsImV4cCI6MjEwNTIyMDEzNX0.mIGYvcVHeCmhNGvBfbm5imlih-r5oWkBdBFHgZ-wX0A';
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     persistSession: false,
     autoRefreshToken: false,
-  },
-  global: {
-    fetch: (url, options) => fetch(url, { ...options, cache: 'no-store' }),
   },
 });
