@@ -6,14 +6,15 @@ export async function POST(req: Request) {
   try {
     const update = await req.json();
 
-    // Agar text message aaya ho
     if (update.message && update.message.text) {
       const chatId = update.message.chat.id;
       const customerText = update.message.text;
-      const senderName = `${update.message.from.first_name \vert{}\vert{} ''}${update.message.from.last_name || ''}`.trim() || 'Telegram User';
-      const senderHandle = update.message.from.username ? `@${update.message.from.username}` : `tg_${chatId}`;
+      
+      const firstName = update.message.from?.first_name || '';
+      const lastName = update.message.from?.last_name || '';
+      const senderName = (firstName + ' ' + lastName).trim() || 'Telegram User';
+      const senderHandle = update.message.from?.username ? '@' + update.message.from.username : 'tg_' + chatId;
 
-      // Call our internal universal router
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
       const inboundRes = await fetch(`${baseUrl}/api/v1/inbound`, {
         method: 'POST',
@@ -28,16 +29,13 @@ export async function POST(req: Request) {
 
       const inboundData = await inboundRes.json();
 
-      // Telegram par customer ko instant auto-reply bhejo
       if (TELEGRAM_BOT_TOKEN && chatId) {
-        let replyText = inboundData.ai_dispatch || 'Aapka issue register ho gaya hai. Support team review kar rahi hai.';
+        let replyText = inboundData.ai_dispatch || 'Issue registered. Support team is reviewing.';
         
-        // Agar tool execute hua ho, to confirmation details add karo
         if (inboundData.executed_tool) {
-          replyText += `\n\n⚡ *Autonomous Action Executed:* ${inboundData.executed_tool.tool}\n🔖 *Ref:* \`${inboundData.executed_tool.ref}\``;
+          replyText += `\n\n⚡ Action: ${inboundData.executed_tool.tool}\n🔖 Ref: ${inboundData.executed_tool.ref}`;
         }
 
-        // Inline Interactive Keyboard Buttons
         const inlineKeyboard = {
           inline_keyboard: [
             [
@@ -53,7 +51,6 @@ export async function POST(req: Request) {
           body: JSON.stringify({
             chat_id: chatId,
             text: replyText,
-            parse_mode: 'Markdown',
             reply_markup: inlineKeyboard
           })
         });
