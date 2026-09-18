@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 
-const TELEGRAM_BOT_TOKEN = '8600882660:AAFbSJEpimvWuLls5jsaEBXE4JmG7hfKzSc';
-const SUPABASE_URL = 'https://bpgrpmdjpdydmlonbeag.supabase.co';
+const TELEGRAM_BOT_TOKEN =
+  process.env.TELEGRAM_BOT_TOKEN || '8600882660:AAFbSJEpimvWuLls5jsaEBXE4JmG7hfKzSc';
+const SUPABASE_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bpgrpmdjpdydmlonbeag.supabase.co';
 const SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwZ3JwbWRqcGR5ZG1sb25iZWFnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4OTY0NDEzNSwiZXhwIjoyMTA1MjIwMTM1fQ.IS-4Da9UsTAG9hXvBabiA8Tal_dCTMVF5Ap04T3nnDw';
 
 function sanitizePII(text: string) {
@@ -40,11 +43,7 @@ export async function POST(req: Request) {
 
       if (ticketId) {
         // Update ticket in Supabase
-        await fetch(`${SUPABASE_URL}/rest/v1/operational_tickets?id=eq.${ticketId}`, {
-          method: 'PATCH',
-          headers: {
-            apikey: SUPABASE_SERVICE_ROLE_KEY,
-            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        await fetch(`${SUPABASE_URL}/rest/v1/operational_tickets?id=eq.${ticketId}`, {           method: 'PATCH',           headers: {             apikey: SUPABASE_SERVICE_ROLE_KEY,             Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
             'Content-Type': 'application/json',
             Prefer: 'return=minimal'
           },
@@ -53,42 +52,12 @@ export async function POST(req: Request) {
       }
 
       // Acknowledge callback to remove loading state in Telegram
-      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          callback_query_id: callbackQueryId,
-          text: confirmationText
-        })
-      });
-
-      if (cbChatId) {
-        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {         method: 'POST',         headers: { 'Content-Type': 'application/json' },         body: JSON.stringify({           callback_query_id: callbackQueryId,           text: confirmationText         })       });        if (cbChatId) {         await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: cbChatId,
-            text: `🔔 *Update:* ${confirmationText}`,
-            parse_mode: 'Markdown'
-          })
-        });
-      }
-
-      return NextResponse.json({ ok: true });
-    }
-
-    // 2. Incoming Ticket Messages
-    const msg = update.message || update.edited_message;
-    if (!msg || !msg.text) {
-      return NextResponse.json({ ok: true });
-    }
-
-    const chatId = msg.chat?.id;
-    const rawText = msg.text;
-
-    if (rawText.trim() === '/start') {
-      if (chatId) {
-        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            text: `🔔 *Update:* ${confirmationText}`,             parse_mode: 'Markdown'           })         });       }        return NextResponse.json({ ok: true });     }      // 2. Incoming Ticket Messages     const msg = update.message \vert{}\vert{} update.edited_message;     if (!msg \vert{}\vert{} !msg.text) {       return NextResponse.json({ ok: true });     }      const chatId = msg.chat?.id;     const rawText = msg.text;      if (rawText.trim() === '/start') {       if (chatId) {         await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -123,7 +92,7 @@ export async function POST(req: Request) {
       executedTool = '';
       replyMessage = '⚠️ Your request contains high-priority indicators and has been escalated to Tier-2 Operations.';
     } else if (!isRefund && !isEscalation) {
-      status = 'AI In-Progress';
+      status = 'Pending';
       confidence = 88;
       executedTool = '';
       replyMessage = '🤖 Your inquiry is being analyzed by OmniAI autonomous support cluster.';
@@ -145,11 +114,7 @@ export async function POST(req: Request) {
 
     let insertedId = '';
     try {
-      const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/operational_tickets`, {
-        method: 'POST',
-        headers: {
-          apikey: SUPABASE_SERVICE_ROLE_KEY,
-          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/operational_tickets`, {         method: 'POST',         headers: {           apikey: SUPABASE_SERVICE_ROLE_KEY,           Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
           'Content-Type': 'application/json',
           Prefer: 'return=representation'
         },
