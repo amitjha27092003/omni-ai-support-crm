@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Sparkles,
@@ -13,11 +13,11 @@ import {
   Clock,
   Smartphone,
   Cpu,
-  RefreshCw,
+  Tag,
 } from "lucide-react";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { StatusPill } from "@/components/ui/StatusPill";
-import { type Ticket } from "./TicketsTable";
+import { type Ticket } from "@/hooks/useTickets";
 
 interface AIInboxProps {
   ticket: Ticket | null;
@@ -57,22 +57,37 @@ export function AIInbox({
 
   const isResolved = ticket.status === "Resolved" || ticket.status === "AI Resolved";
   const isEscalated = ticket.status === "Escalated";
+  const inboundMessage = ticket.sanitized_message || ticket.original_message || "No message content available.";
 
   return (
     <div className="flex-1 flex flex-col glass-panel rounded-2xl overflow-hidden border border-white/10 dark:border-white/[0.08] shadow-2xl h-full">
       {/* Workspace Header */}
       <div className="p-5 sm:p-6 border-b border-white/10 bg-white/[0.02] flex flex-wrap justify-between items-center gap-4">
         <div>
-          <div className="flex items-center gap-2.5 mb-1">
-            <h1 className="text-lg font-bold text-white tracking-tight">{ticket.customer}</h1>
-            <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-white/10 text-slate-300 border border-white/15">
-              Sentiment: {ticket.sentiment || "Neutral"}
+          <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
+            <h1 className="text-lg font-bold text-white tracking-tight">
+              {ticket.customer_name || "Telegram User"}
+            </h1>
+            {ticket.customer_handle && (
+              <span className="text-xs text-slate-400 font-mono">
+                {ticket.customer_handle.startsWith("@") ? ticket.customer_handle : `@${ticket.customer_handle}`}
+              </span>
+            )}
+            {/* Category Slug Badge */}
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md bg-white/5 text-slate-300 border border-white/10">
+              <Tag className="w-3 h-3 text-slate-400" />
+              {ticket.category_slug || "Uncategorized"}
             </span>
             <StatusPill status={ticket.status} pulse={!isResolved} />
           </div>
           <p className="text-xs text-slate-400 font-mono">
-            ID: <span className="text-slate-300">{ticket.id}</span> • Gateway:{" "}
+            ID: <span className="text-slate-300">{ticket.id}</span> • Channel:{" "}
             <strong className="text-white font-sans">{ticket.channel}</strong>
+            {ticket.resolved_at && (
+              <span className="text-emerald-400 ml-2 font-sans">
+                • Resolved: {new Date(ticket.resolved_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
           </p>
         </div>
 
@@ -104,14 +119,14 @@ export function AIInbox({
         {/* Customer Inbound Chat Bubble */}
         <div className="space-y-1.5 max-w-2xl">
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-            <span>Inbound Message</span>
+            <span>Customer Transmission</span>
             <span className="text-slate-500 font-normal">
               via {ticket.channel} • {new Date(ticket.created_at).toLocaleTimeString()}
             </span>
           </div>
 
           <div className="relative bg-white/5 border border-white/10 rounded-2xl rounded-tl-sm p-4 text-sm text-slate-200 leading-relaxed shadow-lg">
-            {ticket.message}
+            {inboundMessage}
           </div>
         </div>
 
@@ -142,7 +157,7 @@ export function AIInbox({
           <div className="bg-[#1E3A8A]/20 border border-[#3B82F6]/30 rounded-2xl p-3.5 text-xs flex items-start gap-3 text-slate-300 max-w-2xl">
             <BookOpen className="w-4 h-4 text-[#60A5FA] flex-shrink-0 mt-0.5" />
             <div>
-              <span className="font-semibold text-[#60A5FA]">Grounding Audit: </span>
+              <span className="font-semibold text-[#60A5FA]">Audit Reference: </span>
               <span className="font-mono text-slate-400 text-[11px]">{ticket.kb_context}</span>
             </div>
           </div>
@@ -173,7 +188,7 @@ export function AIInbox({
               <span>AI Suggested Response</span>
             </button>
             <span className="text-[11px] font-semibold bg-[#10B981]/15 text-[#34D399] border border-[#10B981]/30 px-2.5 py-0.5 rounded-md font-mono">
-              {ticket.confidence}% Confidence
+              {ticket.confidence_score}% Confidence
             </span>
           </div>
 
@@ -198,7 +213,7 @@ export function AIInbox({
                 <CheckCircle2 className="w-3.5 h-3.5" /> Already Resolved & Dispatched
               </span>
             ) : (
-              <span>Edit reply or click dispatch to trigger webhook delivery</span>
+              <span>Edit reply or click dispatch to trigger outbound transmission</span>
             )}
           </div>
 

@@ -2,12 +2,13 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { useTickets, type Ticket } from "@/hooks/useTickets";
 import { Navbar } from "@/components/layout/Navbar";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Footer } from "@/components/layout/Footer";
 import { HeroContent } from "@/components/hero/HeroContent";
 import { KPIGrid } from "@/components/dashboard/KPIGrid";
-import { TicketsTable, type Ticket } from "@/components/dashboard/TicketsTable";
+import { TicketsTable } from "@/components/dashboard/TicketsTable";
 import { AIInbox } from "@/components/dashboard/AIInbox";
 import { AnalyticsCharts } from "@/components/dashboard/AnalyticsCharts";
 import {
@@ -19,45 +20,15 @@ import {
   type KBArticle,
 } from "@/components/dashboard/Modals";
 
-// Map Supabase DB schema to UI structure cleanly
-const mapDbTicketToUi = (dbRow: any): Ticket => {
-  let mappedStatus: Ticket["status"] = "Pending";
-  if (dbRow.status === "Resolved") mappedStatus = "Resolved";
-  else if (dbRow.status === "AI Resolved") mappedStatus = "AI Resolved";
-  else if (dbRow.status === "Escalated") mappedStatus = "Escalated";
-
-  return {
-    id: dbRow.id,
-    customer: dbRow.customer_name || dbRow.customer_handle || "Telegram User",
-    channel: (dbRow.channel as any) || "Telegram",
-    message: dbRow.original_message || dbRow.sanitized_message || "",
-    status: mappedStatus,
-    priority: dbRow.status === "Escalated" ? "High" : "Medium",
-    sentiment: (dbRow.sentiment_trajectory as any) || "Neutral",
-    confidence: Number(dbRow.confidence_score) || 92,
-    slaMinutesLeft: mappedStatus === "Resolved" || mappedStatus === "AI Resolved" ? 0 : 15,
-    kb_context: dbRow.zkp_proof_hash ? `ZKP Hash: ${dbRow.zkp_proof_hash}` : undefined,
-    suggested_reply: dbRow.ai_reply || "",
-    created_at: dbRow.created_at || new Date().toISOString(),
-    tool_action: dbRow.executed_tool
-      ? {
-          toolName: dbRow.executed_tool,
-          actionTaken: true,
-          message: "Autonomously executed via ops agent",
-        }
-      : undefined,
-  };
-};
-
 export default function Dashboard() {
-  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const { tickets, setTickets, loading, error, refetch, syncMode } = useTickets();
+
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [replyText, setReplyText] = useState("");
   const [filterStatus, setFilterStatus] = useState<"All" | "Pending" | "AI Resolved" | "Escalated" | "Resolved">("All");
   const [filterChannel, setFilterChannel] = useState<"All" | "Telegram" | "WhatsApp" | "Email" | "Lark">("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [isAutoPiloting, setIsAutoPiloting] = useState(false);
-  const [isFetching, setIsFetching] = useState(true);
   const [isSending, setIsSending] = useState(false);
 
   // Layout & Modals
@@ -111,89 +82,38 @@ export default function Dashboard() {
     }, 3500);
   };
 
-  // Pure Supabase Database Fetch
-  const fetchTickets = async () => {
-    setIsFetching(true);
-    try {
-      const { data, error } = await supabase
-        .from("operational_tickets")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (data && !error) {
-        const mapped = data.map(mapDbTicketToUi);
-        setTickets(mapped);
-        if (mapped.length > 0) {
-          setSelectedTicket((curr) => {
-            if (!curr) return mapped[0];
-            const found = mapped.find((m) => m.id === curr.id);
-            return found || mapped[0];
-          });
-          setReplyText((curr) => (!curr && mapped[0] ? mapped[0].suggested_reply : curr));
-        }
-      } else if (error) {
-        console.error("Supabase Query Error:", error);
-      }
-    } catch (err) {
-      console.error("Fetch tickets error:", err);
-    } finally {
-      setIsFetching(false);
-    }
-  };
-
+  // Keep selected ticket in sync with loaded tickets
   useEffect(() => {
-    fetchTickets();
-
-    // Supabase Realtime Listener on operational_tickets
-    const channel = supabase
-      .channel("tickets-realtime-live-feed")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "operational_tickets" },
-        (payload) => {
-          const newTck = mapDbTicketToUi(payload.new);
-          setTickets((prev) => [newTck, ...prev.filter((t) => t.id !== newTck.id)]);
-          addLog("INFO", `Realtime Inbound: [${newTck.channel}] from ${newTck.customer}`);
-          showToast(`New Inbound: ${newTck.customer}`);
+    if (tickets.length > 0) {
+      setSelectedTicket((curr) => {
+        if (!curr) {
+          setReplyText(tickets[0].suggested_reply || "");
+          return tickets[0];
         }
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "operational_tickets" },
-        (payload) => {
-          const updated = mapDbTicketToUi(payload.new);
-          setTickets((prev) =>
-            prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t))
-          );
-          setSelectedTicket((prev) =>
-            prev && prev.id === updated.id ? { ...prev, ...updated } : prev
-          );
-          addLog("DISPATCH", `State Sync: #${updated.id.slice(0, 6)} -> ${updated.status}`);
-          showToast(`Status updated: ${updated.status}`);
-        }
-      )
-      .subscribe();
-
-    const interval = setInterval(() => {
-      fetchTickets();
-    }, 5000);
-
-    return () => {
-      supabase.removeChannel(channel);
-      clearInterval(interval);
-    };
-  }, []);
+        const found = tickets.find((t) => t.id === curr.id);
+        return found || tickets[0];
+      });
+    }
+  }, [tickets]);
 
   const filteredTickets = useMemo(() => {
     return tickets.filter((t) => {
       const matchesStatus = filterStatus === "All" || t.status === filterStatus;
       const matchesChannel = filterChannel === "All" || t.channel === filterChannel;
       const q = searchQuery.toLowerCase().trim();
+      const msg = (t.sanitized_message || t.original_message || "").toLowerCase();
+      const cust = (t.customer_name || "").toLowerCase();
+      const handle = (t.customer_handle || "").toLowerCase();
+      const cat = (t.category_slug || "").toLowerCase();
+      const ch = (t.channel || "").toLowerCase();
+
       const matchesSearch =
         q === "" ||
-        t.customer.toLowerCase().includes(q) ||
-        t.message.toLowerCase().includes(q) ||
-        t.channel.toLowerCase().includes(q);
+        cust.includes(q) ||
+        handle.includes(q) ||
+        msg.includes(q) ||
+        cat.includes(q) ||
+        ch.includes(q);
       return matchesStatus && matchesChannel && matchesSearch;
     });
   }, [tickets, filterStatus, filterChannel, searchQuery]);
@@ -202,7 +122,9 @@ export default function Dashboard() {
     const total = tickets.length;
     const resolved = tickets.filter((t) => t.status === "AI Resolved" || t.status === "Resolved").length;
     const escalated = tickets.filter((t) => t.status === "Escalated").length;
-    const pending = tickets.filter((t) => t.status === "Pending").length;
+    const pending = tickets.filter(
+      (t) => t.status === "Pending" || t.status === "Open" || t.status === "AI In-Progress" || t.status === "In Progress"
+    ).length;
     const resolutionRate = total > 0 ? Math.round((resolved / total) * 100) : 0;
     return { total, resolved, escalated, pending, resolutionRate };
   }, [tickets]);
@@ -293,16 +215,27 @@ export default function Dashboard() {
   };
 
   const handleExportCSV = () => {
-    const headers = ["ID", "Customer", "Channel", "Priority", "Status", "Confidence", "Query", "Reply"];
+    const headers = [
+      "ID",
+      "Customer Name",
+      "Customer Handle",
+      "Channel",
+      "Category",
+      "Status",
+      "Confidence",
+      "Query",
+      "AI Reply",
+    ];
     const rows = tickets.map((t) => [
       t.id,
-      `"${t.customer}"`,
+      `"${t.customer_name || ""}"`,
+      `"${t.customer_handle || ""}"`,
       t.channel,
-      t.priority,
+      `"${t.category_slug || "Uncategorized"}"`,
       t.status,
-      `${t.confidence}%`,
-      `"${t.message.replace(/"/g, '""')}"`,
-      `"${t.suggested_reply.replace(/"/g, '""')}"`,
+      `${t.confidence_score}%`,
+      `"${(t.sanitized_message || t.original_message || "").replace(/"/g, '""')}"`,
+      `"${(t.ai_reply || "").replace(/"/g, '""')}"`,
     ]);
 
     const csvContent =
@@ -414,8 +347,9 @@ export default function Dashboard() {
                     onFilterChannelChange={setFilterChannel}
                     filterStatus={filterStatus}
                     onFilterStatusChange={setFilterStatus}
-                    isFetching={isFetching}
-                    onRefresh={fetchTickets}
+                    isFetching={loading}
+                    error={error}
+                    onRefresh={refetch}
                   />
                 </div>
 

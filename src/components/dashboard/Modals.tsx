@@ -59,14 +59,16 @@ export function PreviewModal({ isOpen, onClose, ticket, replyText }: PreviewModa
           <div className="flex items-center gap-3 pb-3 border-b border-white/10 px-2">
             <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#FF9933] to-[#10B981] p-0.5">
               <div className="w-full h-full rounded-full bg-[#12131F] flex items-center justify-center text-xs font-bold text-white">
-                {ticket.customer.slice(0, 2).toUpperCase()}
+                {(ticket.customer_name || "TU").slice(0, 2).toUpperCase()}
               </div>
             </div>
             <div>
-              <div className="text-xs font-bold text-white">{ticket.customer}</div>
+              <div className="text-xs font-bold text-white">
+                {ticket.customer_name || "Telegram User"}
+              </div>
               <div className="text-[10px] text-emerald-400 font-medium flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                {ticket.channel} Gateway
+                {ticket.channel} Gateway {ticket.customer_handle ? `• ${ticket.customer_handle}` : ""}
               </div>
             </div>
           </div>
@@ -76,7 +78,7 @@ export function PreviewModal({ isOpen, onClose, ticket, replyText }: PreviewModa
             {/* Customer Message */}
             <div className="flex justify-start">
               <div className="max-w-[82%] rounded-2xl rounded-tl-sm bg-white/10 border border-white/10 p-3 text-xs text-slate-200">
-                {ticket.message}
+                {ticket.sanitized_message || ticket.original_message || "Empty message"}
                 <div className="text-[9px] text-slate-400 text-right mt-1">
                   {new Date(ticket.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </div>
@@ -89,7 +91,7 @@ export function PreviewModal({ isOpen, onClose, ticket, replyText }: PreviewModa
                 <div className="flex items-center gap-1 text-[9px] text-blue-200 font-semibold mb-1">
                   <Zap className="w-2.5 h-2.5 text-[#FF9933] fill-current" /> OmniAI Dispatch
                 </div>
-                {replyText || ticket.suggested_reply || "No reply drafted yet."}
+                {replyText || ticket.ai_reply || ticket.suggested_reply || "No reply drafted yet."}
                 <div className="text-[9px] text-blue-200/80 text-right mt-1">Just now • Delivered</div>
               </div>
             </div>

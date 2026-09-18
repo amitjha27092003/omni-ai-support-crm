@@ -8,10 +8,18 @@ function cn(...inputs: any[]) {
   return twMerge(clsx(inputs));
 }
 
-export type TicketStatusType = "Pending" | "Open" | "In Progress" | "AI Resolved" | "Resolved" | "Escalated";
+export type TicketStatusType =
+  | "Pending"
+  | "Open"
+  | "AI In-Progress"
+  | "In Progress"
+  | "AI Resolved"
+  | "Resolved"
+  | "Escalated"
+  | string;
 
 interface StatusPillProps {
-  status: TicketStatusType | string;
+  status: TicketStatusType;
   className?: string;
   pulse?: boolean;
 }
@@ -31,7 +39,7 @@ export function StatusPill({ status, className, pulse = true }: StatusPillProps)
       text: "text-emerald-600 dark:text-[#34D399]",
       dot: "bg-[#10B981]",
     };
-  } else if (status === "In Progress") {
+  } else if (status === "In Progress" || status === "AI In-Progress") {
     style = {
       bg: "bg-blue-500/10 dark:bg-[#3B82F6]/15",
       border: "border-blue-500/30 dark:border-[#3B82F6]/40",
@@ -45,12 +53,21 @@ export function StatusPill({ status, className, pulse = true }: StatusPillProps)
       text: "text-rose-600 dark:text-rose-400",
       dot: "bg-rose-500",
     };
+  } else if (status === "Open" || status === "Pending") {
+    style = {
+      bg: "bg-[#FF9933]/10 dark:bg-[#FF9933]/15",
+      border: "border-[#FF9933]/30 dark:border-[#FF9933]/40",
+      text: "text-[#FF9933] dark:text-[#FFAA55]",
+      dot: "bg-[#FF9933]",
+    };
   }
+
+  const isCompleted = status === "Resolved" || status === "AI Resolved";
 
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border backdrop-blur-md shadow-xs select-none transition-all",
+        "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border backdrop-blur-md shadow-xs select-none transition-all whitespace-nowrap",
         style.bg,
         style.border,
         style.text,
@@ -59,12 +76,14 @@ export function StatusPill({ status, className, pulse = true }: StatusPillProps)
     >
       {pulse && (
         <span className="relative flex h-1.5 w-1.5">
-          <span
-            className={cn(
-              "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
-              style.dot
-            )}
-          />
+          {!isCompleted && (
+            <span
+              className={cn(
+                "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
+                style.dot
+              )}
+            />
+          )}
           <span className={cn("relative inline-flex rounded-full h-1.5 w-1.5", style.dot)} />
         </span>
       )}
