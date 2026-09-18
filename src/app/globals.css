@@ -1,1 +1,272 @@
 @import "tailwindcss";
+
+:root {
+  --saffron-glow: #FF9933;
+  --chakra-blue: #1E3A8A;
+  --chakra-glow-color: #3B82F6;
+  --india-green: #10B981;
+  --pearl-white: #FAFAFA;
+  --deep-void: #0A0A0F;
+  --glass-tint: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.1);
+
+  --bg-primary: #0A0A0F;
+  --bg-secondary: #12131F;
+  --text-primary: #F3F4F6;
+  --text-secondary: #9CA3AF;
+}
+
+.light {
+  --bg-primary: #F8FAFC;
+  --bg-secondary: #FFFFFF;
+  --text-primary: #0F172A;
+  --text-secondary: #64748B;
+  --glass-tint: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(226, 232, 240, 0.8);
+}
+
+@layer base {
+  * {
+    border-color: var(--glass-border);
+  }
+
+  body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    overflow-x: hidden;
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   KEYFRAMES
+═══════════════════════════════════════════════════ */
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-150%) skewX(-20deg);
+  }
+  100% {
+    transform: translateX(250%) skewX(-20deg);
+  }
+}
+
+@keyframes mesh-morph {
+  0%, 100% {
+    border-radius: 42% 58% 70% 30% / 45% 45% 55% 55%;
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    border-radius: 70% 30% 50% 50% / 30% 60% 40% 70%;
+    transform: translate(30px, -20px) scale(1.08);
+  }
+  66% {
+    border-radius: 30% 70% 40% 60% / 50% 30% 70% 50%;
+    transform: translate(-25px, 25px) scale(0.95);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(1);
+    filter: drop-shadow(0 0 10px rgba(255, 153, 51, 0.4));
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+    filter: drop-shadow(0 0 20px rgba(255, 153, 51, 0.75));
+  }
+}
+
+@keyframes pulse-chakra {
+  0%, 100% {
+    opacity: 0.5;
+    filter: drop-shadow(0 0 15px rgba(59, 130, 246, 0.4));
+  }
+  50% {
+    opacity: 0.9;
+    filter: drop-shadow(0 0 30px rgba(59, 130, 246, 0.8));
+  }
+}
+
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(1deg);
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   CINEMATIC UTILITIES
+═══════════════════════════════════════════════════ */
+
+.animate-shimmer {
+  animation: shimmer 2.5s infinite;
+}
+
+.animate-mesh-morph {
+  animation: mesh-morph 18s ease-in-out infinite alternate;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+.animate-pulse-chakra {
+  animation: pulse-chakra 4s ease-in-out infinite;
+}
+
+.animate-gradient-shift {
+  background-size: 200% 200%;
+  animation: gradient-shift 6s ease infinite;
+}
+
+.animate-float {
+  animation: float 5s ease-in-out infinite;
+}
+
+/* Tricolor Gradients */
+.bg-tricolor-aurora {
+  background: linear-gradient(135deg, #FF9933 0%, #FAFAFA 50%, #10B981 100%);
+}
+
+.bg-tricolor-glow {
+  background: linear-gradient(135deg, rgba(255,153,51,0.2) 0%, rgba(59,130,246,0.15) 50%, rgba(16,185,129,0.2) 100%);
+}
+
+.text-tricolor-gradient {
+  background: linear-gradient(135deg, #FF9933 0%, #FFFFFF 45%, #10B981 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-saffron-gradient {
+  background: linear-gradient(135deg, #FFAA55 0%, #FF9933 50%, #EA580C 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-chakra-gradient {
+  background: linear-gradient(135deg, #60A5FA 0%, #3B82F6 50%, #1E3A8A 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-green-gradient {
+  background: linear-gradient(135deg, #34D399 0%, #10B981 50%, #059669 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Glass Panels */
+.glass-panel {
+  background: rgba(18, 19, 31, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+.light .glass-panel {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  box-shadow: 0 8px 24px 0 rgba(148, 163, 184, 0.12);
+}
+
+.glass-card-interactive {
+  background: rgba(18, 19, 31, 0.55);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
+}
+
+.light .glass-card-interactive {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.glass-card-interactive:hover {
+  border-color: rgba(255, 153, 51, 0.3);
+  box-shadow: 0 12px 40px -10px rgba(255, 153, 51, 0.15), 0 0 20px -5px rgba(59, 130, 246, 0.12);
+}
+
+/* Hairline Tricolor border */
+.tricolor-hairline-top {
+  position: relative;
+}
+.tricolor-hairline-top::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1.5px;
+  background: linear-gradient(90deg, transparent 0%, #FF9933 25%, #3B82F6 50%, #10B981 75%, transparent 100%);
+  pointer-events: none;
+}
+
+/* Shimmer Button Sweep */
+.shimmer-btn {
+  position: relative;
+  overflow: hidden;
+}
+.shimmer-btn::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.3) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: translateX(-150%) skewX(-20deg);
+  pointer-events: none;
+}
+.shimmer-btn:hover::before {
+  animation: shimmer 1.2s ease-in-out infinite;
+}
+
+/* Custom Sleek Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 153, 51, 0.4);
+}
+
+.light ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+}
+.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 153, 51, 0.6);
+}

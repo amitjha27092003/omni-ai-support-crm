@@ -52,19 +52,49 @@ export async function POST(req: Request) {
       }
 
       // Acknowledge callback to remove loading state in Telegram
-      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {         method: 'POST',         headers: { 'Content-Type': 'application/json' },         body: JSON.stringify({           callback_query_id: callbackQueryId,           text: confirmationText         })       });        if (cbChatId) {         await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          callback_query_id: callbackQueryId,
+          text: confirmationText,
+        }),
+      });
+
+      if (cbChatId) {
+        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: cbChatId,
-            text: `🔔 *Update:* ${confirmationText}`,             parse_mode: 'Markdown'           })         });       }        return NextResponse.json({ ok: true });     }      // 2. Incoming Ticket Messages     const msg = update.message \vert{}\vert{} update.edited_message;     if (!msg \vert{}\vert{} !msg.text) {       return NextResponse.json({ ok: true });     }      const chatId = msg.chat?.id;     const rawText = msg.text;      if (rawText.trim() === '/start') {       if (chatId) {         await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            text: `🔔 *Update:* ${confirmationText}`,
+            parse_mode: 'Markdown',
+          }),
+        });
+      }
+
+      return NextResponse.json({ ok: true });
+    }
+
+    // 2. Incoming Ticket Messages
+    const msg = update.message || update.edited_message;
+    if (!msg || !msg.text) {
+      return NextResponse.json({ ok: true });
+    }
+
+    const chatId = msg.chat?.id;
+    const rawText = msg.text;
+
+    if (rawText.trim() === '/start') {
+      if (chatId) {
+        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
             text: '👋 *OmniAI Ops Bot Connected!*\n\nSend your issue or inquiry directly here.',
-            parse_mode: 'Markdown'
-          })
+            parse_mode: 'Markdown',
+          }),
         });
       }
       return NextResponse.json({ ok: true });
