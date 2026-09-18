@@ -3,8 +3,8 @@ import crypto from 'crypto';
 
 const TELEGRAM_BOT_TOKEN = '8600882660:AAFbSJEpimvWuLls5jsaEBXE4JmG7hfKzSc';
 const SUPABASE_URL = 'https://bpgrpmdjpdydmlonbeag.supabase.co';
-const SUPABASE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwZ3JwbWRqcGR5ZG1sb25iZWFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NDQxMzUsImV4cCI6MjEwNTIyMDEzNX0.mIGYvcVHeCmhNGvBfbm5imlih-r5oWkBdBFHgZ-wX0A';
+const SUPABASE_SERVICE_ROLE_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwZ3JwbWRqcGR5ZG1sb25iZWFnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4OTY0NDEzNSwiZXhwIjoyMTA1MjIwMTM1fQ.IS-4Da9UsTAG9hXvBabiA8Tal_dCTMVF5Ap04T3nnDw';
 
 function sanitizePII(text: string) {
   let masked = text;
@@ -69,7 +69,7 @@ export async function POST(req: Request) {
       replyMessage = '🤖 Your inquiry is being analyzed by OmniAI autonomous support cluster.';
     }
 
-    // 1. Supabase me ticket insert karo
+    // 1. Direct Supabase Ingestion via Service Role Key (Bypasses all RLS / Anon restrictions)
     const dbPayload = {
       channel: 'Telegram',
       customer_name: senderName,
@@ -88,8 +88,8 @@ export async function POST(req: Request) {
       const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/operational_tickets`, {
         method: 'POST',
         headers: {
-          'apikey': SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'apikey': SUPABASE_SERVICE_ROLE_KEY,
+          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
           'Content-Type': 'application/json',
           'Prefer': 'return=representation'
         },
@@ -102,7 +102,7 @@ export async function POST(req: Request) {
       console.error('SUPABASE_FETCH_ERR:', dbErr);
     }
 
-    // 2. Telegram user ko response bhejo
+    // 2. Telegram Response Dispatch
     if (chatId) {
       let finalReply = replyMessage;
       if (executedTool) {
