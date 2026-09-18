@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { generateMultilingualTriage } from '@/lib/gemini';
+import { ingestMessage } from '@/lib/ingestMessage';
 
 const TELEGRAM_BOT_TOKEN =
   process.env.TELEGRAM_BOT_TOKEN || '8600882660:AAFbSJEpimvWuLls5jsaEBXE4JmG7hfKzSc';
@@ -107,96 +107,17 @@ export async function POST(req: Request) {
     const senderName = (firstName + ' ' + lastName).trim() || 'Telegram User';
     const senderHandle = msg.from?.username ? '@' + msg.from.username : 'tg_' + chatId;
 
-    const sanitized = sanitizePII(rawText);
-    const zkpHash = 'zkp_' + crypto.createHash('sha256').update(rawText + Date.now()).digest('hex').substring(0, 16);
-
-    // Multilingual AI Triage using Gemini 2.5
-    const triage = await generateMultilingualTriage({
-      customerMessage: sanitized,
+    // Unified Omnichannel Ingestion Pipeline
+    const ingestResult = await ingestMessage({
+      channel: 'Telegram',
       customerName: senderName,
-      tone: "Formal",
-      targetLanguage: "auto",
-      channel: "Telegram",
+      customerHandle: senderHandle,
+      chatId: String(chatId),
+      message: rawText,
     });
 
-    const isRefund = /refund|money back|transaction|payment|paise|reembolso|استرداد|退款/i.test(sanitized);
-    const isEscalation = /fraud|urgent|legal|human|agent|insan|madad/i.test(sanitized);
-
-    let status = 'AI Resolved';
-    let confidence = triage.confidence_score || 95;
-    let executedTool = 'stripe_recon_agent';
-    let replyMessage = triage.suggested_reply || '✅ Your request has been analyzed and processed autonomously via shadow execution.';
-
-    if (!isRefund && isEscalation) {
-      status = 'Escalated';
-      confidence = 65;
-      executedTool = '';
-      replyMessage = triage.suggested_reply || '⚠️ Your request contains high-priority indicators and has been escalated to Tier-2 Operations.';
-    } else if (!isRefund && !isEscalation) {
-      status = 'Pending';
-      confidence = triage.confidence_score || 88;
-      executedTool = '';
-      replyMessage = triage.suggested_reply || '🤖 Your inquiry is being analyzed by OmniAI autonomous support cluster.';
-    }
-
-    const dbPayload = {
-      channel: 'Telegram',
-      customer_name: senderName,
-      customer_handle: senderHandle,
-      original_message: rawText,
-      sanitized_message: sanitized,
-      status: status,
-      confidence_score: Number(confidence),
-      executed_tool: executedTool || null,
-      zkp_proof_hash: zkpHash,
-      sentiment_trajectory: 'Neutral',
-      ai_reply: replyMessage,
-      chat_id: String(update.message?.chat?.id || msg.chat?.id),
-      detected_language: triage.detected_language,
-      detected_language_iso: triage.detected_language_iso,
-      english_translation: triage.english_translation,
-      target_response_language: 'auto',
-    };
-
-    let insertedId = '';
-    try {
-      let dbRes = await fetch(`${SUPABASE_URL}/rest/v1/operational_tickets`, {
-        method: 'POST',
-        headers: {
-          apikey: SUPABASE_SERVICE_ROLE_KEY,
-          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          'Content-Type': 'application/json',
-          Prefer: 'return=representation'
-        },
-        body: JSON.stringify(dbPayload)
-      });
-
-      // If DB migration 004 is not yet run, gracefully retry without the new columns
-      if (!dbRes.ok) {
-        const errJson = await dbRes.clone().json().catch(() => ({}));
-        if (errJson?.message && errJson.message.includes("column")) {
-          console.warn("[Telegram Webhook] Multilingual columns not yet in DB, falling back to legacy insert");
-          const { detected_language, detected_language_iso, english_translation, target_response_language, ...legacyPayload } = dbPayload;
-          dbRes = await fetch(`${SUPABASE_URL}/rest/v1/operational_tickets`, {
-            method: 'POST',
-            headers: {
-              apikey: SUPABASE_SERVICE_ROLE_KEY,
-              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-              'Content-Type': 'application/json',
-              Prefer: 'return=representation'
-            },
-            body: JSON.stringify(legacyPayload)
-          });
-        }
-      }
-
-      const resBody = await dbRes.json();
-      if (Array.isArray(resBody) && resBody[0]?.id) {
-        insertedId = resBody[0].id;
-      }
-    } catch (dbErr) {
-      console.error('SUPABASE_FETCH_ERR:', dbErr);
-    }
+    const insertedId = ingestResult.ticketId;
+    const replyMessage = ingestResult.aiReply;
 
     if (chatId) {
       let finalReply = replyMessage;

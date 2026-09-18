@@ -29,7 +29,7 @@ export default function Dashboard() {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [replyText, setReplyText] = useState("");
   const [filterStatus, setFilterStatus] = useState<"All" | "Pending" | "AI Resolved" | "Escalated" | "Resolved">("All");
-  const [filterChannel, setFilterChannel] = useState<"All" | "Telegram" | "WhatsApp" | "Email" | "Lark">("All");
+  const [filterChannel, setFilterChannel] = useState<"All" | "Telegram" | "WhatsApp" | "Email" | "Lark" | "WebChat">("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [isAutoPiloting, setIsAutoPiloting] = useState(false);
   const [isSending, setIsSending] = useState(false);

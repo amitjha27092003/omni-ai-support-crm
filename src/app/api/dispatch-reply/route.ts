@@ -62,80 +62,98 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Ticket not found in database" }, { status: 404 });
     }
 
-    const numericChatId =
-      ticket.chat_id != null && String(ticket.chat_id).trim() !== ""
-        ? String(ticket.chat_id).trim()
-        : body.chatId && /^\d+$/.test(String(body.chatId))
-        ? String(body.chatId)
-        : null;
+    const isWebChat = ticket.channel === "WebChat";
+    let telegramMessageId: number | null = null;
 
-    // Validate that numeric chat_id is present
-    if (!numericChatId) {
-      console.warn(`[dispatch-reply] Missing chat_id for ticket ${ticketId}`);
-      return NextResponse.json(
-        { error: "User hasn't started the bot yet. Ask them to send /start." },
-        { status: 400 }
-      );
+    if (!isWebChat) {
+      const numericChatId =
+        ticket.chat_id != null && String(ticket.chat_id).trim() !== ""
+          ? String(ticket.chat_id).trim()
+          : body.chatId && /^\d+$/.test(String(body.chatId))
+          ? String(body.chatId)
+          : null;
+
+      // Validate that numeric chat_id is present for Telegram
+      if (!numericChatId) {
+        console.warn(`[dispatch-reply] Missing chat_id for ticket ${ticketId}`);
+        return NextResponse.json(
+          { error: "User hasn't started the bot yet. Ask them to send /start." },
+          { status: 400 }
+        );
+      }
+
+      // Dispatch message to Telegram Bot API with numeric chat_id
+      console.log("[dispatch-reply] Telegram request:", {
+        chat_id: numericChatId,
+        text: message,
+        parse_mode: "Markdown",
+      });
+
+      try {
+        const telegramRes = await fetch(
+          `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: numericChatId,
+              text: message,
+              parse_mode: "Markdown",
+            }),
+          }
+        );
+
+        const telegramData = await telegramRes.json();
+        console.log("[dispatch-reply] Telegram response (attempt 1):", telegramData);
+
+        if (!telegramData.ok) {
+          const desc = (telegramData.description || "").toLowerCase();
+          // Fallback to plain text in case of markdown formatting issues
+          if (desc.includes("can't parse entities") || desc.includes("markdown")) {
+            console.log("[dispatch-reply] Retrying with plain text...");
+            const retryRes = await fetch(
+              `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  chat_id: numericChatId,
+                  text: message,
+                }),
+              }
+            );
+            const retryData = await retryRes.json();
+            console.log("[dispatch-reply] Telegram response (attempt 2):", retryData);
+
+            if (!retryData.ok) {
+              return handleTelegramError(retryData);
+            }
+            telegramMessageId = retryData.result?.message_id || null;
+          } else {
+            return handleTelegramError(telegramData);
+          }
+        } else {
+          telegramMessageId = telegramData.result?.message_id || null;
+        }
+      } catch (fetchErr: unknown) {
+        const errMsg = fetchErr instanceof Error ? fetchErr.message : "Telegram network error";
+        console.error("[dispatch-reply] Telegram fetch failed:", fetchErr);
+        return NextResponse.json({ error: errMsg }, { status: 500 });
+      }
+    } else {
+      console.log(`[dispatch-reply] Dispatching directly to WebChat customer for ticket ${ticketId}`);
     }
 
-    // Dispatch message to Telegram Bot API with numeric chat_id
-    console.log("[dispatch-reply] Telegram request:", {
-      chat_id: numericChatId,
-      text: message,
-      parse_mode: "Markdown",
-    });
-
-    let telegramMessageId: number | null = null;
+    // Insert agent message into ticket_messages for realtime sync to /support
     try {
-      const telegramRes = await fetch(
-        `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: numericChatId,
-            text: message,
-            parse_mode: "Markdown",
-          }),
-        }
-      );
-
-      const telegramData = await telegramRes.json();
-      console.log("[dispatch-reply] Telegram response (attempt 1):", telegramData);
-
-      if (!telegramData.ok) {
-        const desc = (telegramData.description || "").toLowerCase();
-        // Fallback to plain text in case of markdown formatting issues
-        if (desc.includes("can't parse entities") || desc.includes("markdown")) {
-          console.log("[dispatch-reply] Retrying with plain text...");
-          const retryRes = await fetch(
-            `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                chat_id: numericChatId,
-                text: message,
-              }),
-            }
-          );
-          const retryData = await retryRes.json();
-          console.log("[dispatch-reply] Telegram response (attempt 2):", retryData);
-
-          if (!retryData.ok) {
-            return handleTelegramError(retryData);
-          }
-          telegramMessageId = retryData.result?.message_id || null;
-        } else {
-          return handleTelegramError(telegramData);
-        }
-      } else {
-        telegramMessageId = telegramData.result?.message_id || null;
-      }
-    } catch (fetchErr: unknown) {
-      const errMsg = fetchErr instanceof Error ? fetchErr.message : "Telegram network error";
-      console.error("[dispatch-reply] Telegram fetch failed:", fetchErr);
-      return NextResponse.json({ error: errMsg }, { status: 500 });
+      await supabaseAdmin.from("ticket_messages").insert({
+        ticket_id: ticketId,
+        sender: "agent",
+        content: message,
+      });
+      console.log(`[dispatch-reply] Inserted agent message into ticket_messages for ticket ${ticketId}`);
+    } catch (msgErr) {
+      console.warn("[dispatch-reply] ticket_messages insert note:", msgErr);
     }
 
     // Update ticket in Supabase with Resolved status and outbound message

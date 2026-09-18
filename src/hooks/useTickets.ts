@@ -171,12 +171,14 @@ export function useTickets() {
         "postgres_changes",
         { event: "*", schema: "public", table: "operational_tickets" },
         (payload) => {
-          console.log("[useTickets] Realtime payload received:", payload);
-          if (payload.eventType === "INSERT") {
+          console.log("[useTickets Realtime event]", payload.eventType, payload);
+          if (payload.eventType === "INSERT" && payload.new) {
             const newTicket = mapDbTicketToUi(payload.new);
+            console.log("[useTickets] Realtime ticket inserted:", newTicket.id, newTicket.channel, newTicket.customer_name);
             setTickets((prev) => [newTicket, ...prev.filter((t) => t.id !== newTicket.id)]);
-          } else if (payload.eventType === "UPDATE") {
+          } else if (payload.eventType === "UPDATE" && payload.new) {
             const updated = mapDbTicketToUi(payload.new);
+            console.log("[useTickets] Realtime ticket updated:", updated.id, updated.status);
             setTickets((prev) =>
               prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t))
             );

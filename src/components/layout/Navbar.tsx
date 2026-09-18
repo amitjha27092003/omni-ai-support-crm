@@ -185,17 +185,7 @@ export function Navbar({
         {/* Right Section: Theme Toggle, Notifications, User Avatar */}
         <div className="flex items-center gap-3">
           {/* Public Customer Support Portal Link */}
-          <Link
-            href="/support"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Open Public Customer Support Portal"
-            title="Open Multilingual Customer Chat Portal (/support)"
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#FF9933]/15 via-[#1E3A8A]/20 to-[#10B981]/15 hover:from-[#FF9933]/25 hover:to-[#10B981]/25 border border-white/15 text-xs text-slate-200 hover:text-white transition shadow-sm font-medium"
-          >
-            <MessageSquare className="w-3.5 h-3.5 text-[#FF9933]" />
-            <span>Support Chat</span>
-          </Link>
+          
 
           {/* Theme Toggle */}
           {mounted && (
@@ -372,3 +362,4 @@ export function Navbar({
     </header>
   );
 }
+

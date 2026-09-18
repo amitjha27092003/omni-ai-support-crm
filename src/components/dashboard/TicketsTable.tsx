@@ -27,8 +27,8 @@ interface TicketsTableProps {
   onSelectTicket: (ticket: Ticket) => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
-  filterChannel: "All" | "Telegram" | "WhatsApp" | "Email" | "Lark";
-  onFilterChannelChange: (ch: "All" | "Telegram" | "WhatsApp" | "Email" | "Lark") => void;
+  filterChannel: "All" | "Telegram" | "WhatsApp" | "Email" | "Lark" | "WebChat";
+  onFilterChannelChange: (ch: "All" | "Telegram" | "WhatsApp" | "Email" | "Lark" | "WebChat") => void;
   filterStatus: "All" | "Pending" | "Open" | "AI In-Progress" | "AI Resolved" | "Escalated" | "Resolved";
   onFilterStatusChange: (status: any) => void;
   isFetching: boolean;
@@ -51,6 +51,7 @@ export function TicketsTable({
   onRefresh,
 }: TicketsTableProps) {
   const channelIcons: Record<string, any> = {
+    WebChat: Globe,
     Telegram: Send,
     WhatsApp: Smartphone,
     Email: Mail,
@@ -58,6 +59,7 @@ export function TicketsTable({
   };
 
   const channelColors: Record<string, string> = {
+    WebChat: "text-[#FFB066] bg-[#FF9933]/15 border-[#FF9933]/40 shadow-xs shadow-[#FF9933]/20",
     Telegram: "text-[#38BDF8] bg-sky-500/10 border-sky-500/30",
     WhatsApp: "text-[#34D399] bg-emerald-500/10 border-emerald-500/30",
     Email: "text-[#FFAA55] bg-amber-500/10 border-amber-500/30",
@@ -105,7 +107,7 @@ export function TicketsTable({
 
         {/* Channel filter pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs custom-scrollbar">
-          {(["All", "Telegram", "WhatsApp", "Email", "Lark"] as const).map((ch) => (
+          {(["All", "WebChat", "Telegram", "WhatsApp", "Email", "Lark"] as const).map((ch) => (
             <button
               key={ch}
               onClick={() => onFilterChannelChange(ch)}
