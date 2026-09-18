@@ -4,7 +4,6 @@ import crypto from 'crypto';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 
-// Inline PII Sanitization
 function sanitizePII(text: string) {
   let masked = text;
   masked = masked.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[VAULT_SEC_EMAIL]');
@@ -21,7 +20,6 @@ export async function POST(req: Request) {
       const chatId = update.message.chat.id;
       const rawText = update.message.text;
 
-      // /start command handling
       if (rawText.trim() === '/start') {
         if (TELEGRAM_BOT_TOKEN && chatId) {
           await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -29,7 +27,7 @@ export async function POST(req: Request) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: chatId,
-              text: '👋 *Welcome to OmniAI Ops Support Engine!*\n\nSend your issue or inquiry directly here. Our autonomous engine processes requests with real-time ZKP verification.',
+              text: '👋 *Welcome to OmniAI Ops Support Engine!*\n\nSend your issue or inquiry directly here.',
               parse_mode: 'Markdown'
             })
           });
@@ -42,57 +40,61 @@ export async function POST(req: Request) {
       const senderName = (firstName + ' ' + lastName).trim() || 'Telegram User';
       const senderHandle = update.message.from?.username ? '@' + update.message.from.username : 'tg_' + chatId;
 
-      // 1. Sanitize PII
       const sanitized = sanitizePII(rawText);
-
-      // 2. Generate ZKP Proof Hash
       const zkpHash = 'zkp_' + crypto.createHash('sha256').update(rawText + Date.now()).digest('hex').substring(0, 16);
 
-      // 3. Autonomous intent detection
       const isRefund = /refund|money back|transaction|payment/i.test(sanitized);
       const isEscalation = /fraud|urgent|legal|human|agent/i.test(sanitized);
 
       let status = 'Open';
-      let confidence = 0.95;
-      let executedAction: { tool: string; ref: string } | null = null;
+      let confidence = 95; // Stored as integer/clean numeric
+      let executedTool = '';
       let replyMessage = '';
 
       if (isRefund) {
         status = 'AI Resolved';
-        executedAction = {
-          tool: 'stripe_recon_agent',
-          ref: 'REC_' + Math.floor(100000 + Math.random() * 900000)
-        };
+        executedTool = 'stripe_recon_agent';
         replyMessage = '✅ Your refund request has been analyzed and processed autonomously via shadow execution.';
       } else if (isEscalation) {
         status = 'Escalated';
-        confidence = 0.65;
+        confidence = 65;
         replyMessage = '⚠️ Your request contains high-priority indicators and has been escalated to Tier-2 Operations.';
       } else {
         status = 'AI In-Progress';
-        confidence = 0.88;
+        confidence = 88;
         replyMessage = '🤖 Your inquiry is being analyzed by OmniAI autonomous support cluster.';
       }
 
-      // 4. Save directly into Supabase
-      await supabase.from('operational_tickets').insert([
-        {
-          channel: 'Telegram',
-          customer_name: senderName,
-          customer_handle: senderHandle,
-          original_message: rawText,
-          sanitized_message: sanitized,
-          status: status,
-          confidence_score: confidence,
-          zkp_proof_hash: zkpHash
-        }
-      ]);
+      // Insert matching table columns
+      const { data: insertedData, error: dbError } = await supabase
+        .from('operational_tickets')
+        .insert([
+          {
+            channel: 'Telegram',
+            customer_name: senderName,
+            customer_handle: senderHandle,
+            original_message: rawText,
+            sanitized_message: sanitized,
+            status: status,
+            confidence_score: confidence,
+            executed_tool: executedTool || null,
+            zkp_proof_hash: zkpHash,
+            ai_reply: replyMessage
+          }
+        ])
+        .select();
 
-      // 5. Send message back to Telegram
+      if (dbError) {
+        console.error('SUPABASE_INSERT_FAIL:', dbError);
+      } else {
+        console.log('SUPABASE_INSERT_SUCCESS:', insertedData);
+      }
+
+      // Send response to Telegram
       if (TELEGRAM_BOT_TOKEN && chatId) {
         let finalResponse = replyMessage;
-        if (executedAction) {
-          finalResponse += `\n\n⚡ *Autonomous Action:* \`${executedAction.tool}\`\n🔖 *Ref ID:* \`${executedAction.ref}\`\n🔐 *ZKP Proof:* \`${zkpHash}\``;
+        if (executedTool) {
+          finalResponse += `\n\n⚡ *Autonomous Action:* \`${executedTool}\`\n🔐 *ZKP Proof:* \`${zkpHash}\``;
         }
 
         const inlineKeyboard = {
@@ -119,7 +121,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {
-    console.error('Telegram Webhook Route Error:', err);
+    console.error('Webhook Error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
