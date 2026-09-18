@@ -1,56 +1,56 @@
 import { NextResponse } from "next/server";
-
-let ticketsStore = [
-  {
-    id: "tck-01",
-    customer: "Rahul Sharma",
-    channel: "WhatsApp",
-    priority: "High",
-    message: "Maine payment kar diya par mera account upgrade nahi hua. Order ID #9821.",
-    status: "Pending",
-    suggested_reply: "Hi Rahul, Order ID #9821 verify ho gaya hai. Hum aapka plan activate kar rahe hain.",
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: "tck-02",
-    customer: "Pooja Verma",
-    channel: "Email",
-    priority: "Medium",
-    message: "Do you offer API access for custom CRM integrations on standard plan?",
-    status: "Pending",
-    suggested_reply: "Hello Pooja, API access standard plan par supported nahi hai, Pro tier par available hai.",
-    created_at: new Date(Date.now() - 10 * 60000).toISOString(),
-  },
-];
+import { supabase } from "@/lib/supabase";
 
 export async function GET() {
-  return NextResponse.json({ tickets: ticketsStore });
+  try {
+    const { data, error } = await supabase
+      .from("tickets")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Supabase fetch error:", error);
+      return NextResponse.json({ tickets: [] });
+    }
+
+    return NextResponse.json({ tickets: data || [] });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message, tickets: [] }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { action, ticket, ticketId, status, suggested_reply } = body;
+    const { action, ticketId, status, suggested_reply, internal_note } = body;
 
-    if (action === "create") {
-      const newTicket = {
-        ...ticket,
-        id: `tck-${Date.now().toString().slice(-4)}`,
-        created_at: new Date().toISOString(),
-      };
-      ticketsStore.unshift(newTicket);
-      return NextResponse.json({ success: true, ticket: newTicket });
+    // Action: Update existing ticket status/reply
+    if (action === "update" && ticketId) {
+      const updateData: any = {};
+      if (status) updateData.status = status;
+      if (suggested_reply) updateData.suggested_reply = suggested_reply;
+      if (internal_note !== undefined) updateData.internal_note = internal_note;
+
+      const { data, error } = await supabase
+        .from("tickets")
+        .update(updateData)
+        .eq("id", ticketId)
+        .select();
+
+      if (error) throw error;
+      return NextResponse.json({ success: true, ticket: data?.[0] });
     }
 
-    if (action === "update") {
-      ticketsStore = ticketsStore.map((t) =>
-        t.id === ticketId ? { ...t, status, suggested_reply } : t
-      );
-      return NextResponse.json({ success: true });
-    }
+    // Action: Insert new ticket
+    const { data, error } = await supabase
+      .from("tickets")
+      .upsert([body])
+      .select();
 
-    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+    if (error) throw error;
+    return NextResponse.json({ success: true, ticket: data?.[0] }, { status: 201 });
   } catch (err: any) {
+    console.error("Supabase mutation error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

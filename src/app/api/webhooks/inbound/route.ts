@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { executeAgentTool } from "@/lib/agent-tools";
+import { supabase } from "@/lib/supabase";
 
 export async function POST(req: Request) {
   try {
@@ -50,15 +51,17 @@ export async function POST(req: Request) {
       confidence: 95,
       slaMinutesLeft: isUrgent ? 10 : 30,
       suggested_reply: `Hi ${customer}, your query regarding "${message.slice(0, 35)}..." is being processed by OmniAI Ops.`,
-      tool_action: toolResult,
       created_at: new Date().toISOString(),
     };
+
+    // Store in Supabase
+    await supabase.from("tickets").insert([newTicket]);
 
     return NextResponse.json(
       {
         success: true,
-        message: "Webhook event ingested into OmniAI queue",
-        ticket: newTicket,
+        message: "Webhook event ingested and stored in database",
+        ticket: { ...newTicket, tool_action: toolResult },
       },
       { status: 201 }
     );
