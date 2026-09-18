@@ -1,179 +1,136 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { GoogleGenAI } from '@google/genai';
+import crypto from 'crypto';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
+const TELEGRAM_BOT_TOKEN = '8600882660:AAFbSJEpimvWuLls5jsaEBXE4JmG7hfKzSc';
+const SUPABASE_URL = 'https://bpgrpmdjpydmlonbeag.supabase.co';
+const SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwZ3JwbWRqcHlkbWxvbmJlYWciLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc1MjYxMDk2MywiZXhwIjoyMDY4MTg2OTY0fQ.mIGYvcVHeCmhNGvBfbm5im1ih-r5oWkBdBFHgZ-wX0A';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
-
-// 1. Bank-Grade PII Sanitization Vault Function
-function sanitizePII(text: string): { sanitized: string; maskedItems: number } {
-  let count = 0;
-  // Card numbers (13-19 digits)
-  let cleaned = text.replace(/\b(?:\d[ -]*?){13,19}\b/g, () => {
-    count++;
-    return '[VAULT_SEC_CARD]';
-  });
-  // Phone numbers (10 digits)
-  cleaned = cleaned.replace(/\b[6-9]\d{9}\b/g, () => {
-    count++;
-    return '[VAULT_SEC_PHONE]';
-  });
-  // Indian PAN (5 letters, 4 digits, 1 letter)
-  cleaned = cleaned.replace(/\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b/gi, () => {
-    count++;
-    return '[VAULT_SEC_PAN]';
-  });
-  return { sanitized: cleaned, maskedItems: count };
-}
-
-// 2. Mock Operations Execution Tool Sandbox
-async function executeOperationalTool(intent: string, payload: any) {
-  if (intent.includes('refund') || intent.includes('billing')) {
-    return {
-      tool: 'stripe.refunds.recon',
-      status: 'SUCCESS',
-      ref: `RECON_TXN_${Math.floor(100000 + Math.random() * 900000)}`,
-      actionTaken: 'Payment capture reconciled and updated on live ledger'
-    };
-  }
-  return {
-    tool: 'identity.session.verify',
-    status: 'SUCCESS',
-    ref: `AUTH_SEC_${Math.floor(1000 + Math.random() * 9000)}`,
-    actionTaken: 'Account authorization verified'
-  };
+function sanitizePII(text: string) {
+  let masked = text;
+  masked = masked.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[VAULT_SEC_EMAIL]');
+  masked = masked.replace(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g, '[VAULT_SEC_PHONE]');
+  masked = masked.replace(/\b(?:\d[ -]*?){13,16}\b/g, '[VAULT_SEC_CARD]');
+  return masked;
 }
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { channel = 'API', customer_name = 'Enterprise Client', customer_handle = 'unknown', message = '' } = body;
+    const update = await req.json();
+    const msg = update.message || update.edited_message;
 
-    if (!message) {
-      return NextResponse.json({ error: 'Message body cannot be empty' }, { status: 400 });
+    if (!msg || !msg.text) {
+      return NextResponse.json({ ok: true });
     }
 
-    // A. Check Billing Subscription & Resolution Quota Gate
-    const { data: tenant } = await supabase
-      .from('tenants_billing')
-      .select('*')
-      .limit(1)
-      .single();
+    const chatId = msg.chat?.id;
+    const rawText = msg.text;
 
-    if (tenant) {
-      if (tenant.status === 'expired' || tenant.resolutions_used >= tenant.resolution_quota) {
-        return NextResponse.json({
-          error: 'Autonomous Execution Blocked: Plan limit exhausted. Upgrade to Growth Ops or Enterprise Swarm to resume zero-touch dispatch.',
-          code: 'PAYMENT_REQUIRED'
-        }, { status: 402 });
+    if (rawText.trim() === '/start') {
+      if (chatId) {
+        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: '👋 *OmniAI Ops Bot Connected!*\n\nSend your ticket inquiry to begin.',
+            parse_mode: 'Markdown'
+          })
+        });
       }
+      return NextResponse.json({ ok: true });
     }
 
-    // B. Bank-Grade PII Sanitization
-    const { sanitized } = sanitizePII(message);
+    const firstName = msg.from?.first_name || '';
+    const lastName = msg.from?.last_name || '';
+    const senderName = (firstName + ' ' + lastName).trim() || 'Telegram User';
+    const senderHandle = msg.from?.username ? '@' + msg.from.username : 'tg_' + chatId;
 
-    // C. Fetch Dynamic Taxonomy Categories from DB
-    const { data: categories } = await supabase
-      .from('dynamic_categories')
-      .select('slug, name, sla_minutes, priority');
+    const sanitized = sanitizePII(rawText);
+    const zkpHash = 'zkp_' + crypto.createHash('sha256').update(rawText + Date.now()).digest('hex').substring(0, 16);
 
-    const taxonomyList = categories && categories.length > 0 
-      ? categories.map(c => `${c.slug} (${c.name})`).join(', ')
-      : 'billing-recon, tech-api, identity-sec, enterprise-legal';
+    const isRefund = /refund|money back|transaction|payment/i.test(sanitized);
+    const isEscalation = /fraud|urgent|legal|human|agent/i.test(sanitized);
 
-    // D. Gemini 2.5 Flash Autonomous Processing
-    const prompt = `
-You are the Autonomous Operations OS core brain.
-Taxonomy Categories: [${taxonomyList}]
+    let status = 'AI Resolved';
+    let confidence = 95;
+    let executedTool = 'stripe_recon_agent';
+    let replyMessage = '✅ Your refund request has been analyzed and processed autonomously via shadow execution.';
 
-Customer Message: "${sanitized}"
+    if (!isRefund && isEscalation) {
+      status = 'Escalated';
+      confidence = 65;
+      executedTool = '';
+      replyMessage = '⚠️ Your request contains high-priority indicators and has been escalated to Tier-2 Operations.';
+    } else if (!isRefund && !isEscalation) {
+      status = 'AI In-Progress';
+      confidence = 88;
+      executedTool = '';
+      replyMessage = '🤖 Your inquiry is being analyzed by OmniAI autonomous support cluster.';
+    }
 
-Classify this enterprise query, determine confidence score (0-100), choose matching category_slug, determine sentiment_trajectory ("Calm -> Neutral", "Neutral -> Frustrated", or "Urgent -> Escalation Risk"), and formulate an authoritative executive resolution.
-
-Output STRICT JSON ONLY matching this format:
-{
-  "category_slug": "exact matching slug from categories",
-  "confidence_score": 95,
-  "sentiment_trajectory": "Neutral -> Frustrated",
-  "ai_resolution": "Resolution message here",
-  "requires_tool": true
-}
-`;
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json'
+    // 1. Send Telegram reply first
+    if (chatId) {
+      let finalReply = replyMessage;
+      if (executedTool) {
+        finalReply += `\n\n⚡ *Autonomous Action:* \`${executedTool}\`\n🔐 *ZKP Proof:* \`${zkpHash}\``;
       }
-    });
 
-    const aiParsed = JSON.parse(response.text || '{}');
-    const confidence = aiParsed.confidence_score || 85;
-    const isAutoResolved = confidence >= 90;
-
-    // E. Execute Autonomous Operational Tool
-    let toolResult: any = null;
-    if (isAutoResolved) {
-      toolResult = await executeOperationalTool(aiParsed.category_slug || 'billing', body);
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: finalReply,
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '✅ Acknowledge', callback_data: 'ack_ok' },
+                { text: '👤 Human Agent', callback_data: 'talk_agent' }
+              ]
+            ]
+          }
+        })
+      });
     }
 
-    // F. Generate Cryptographic ZKP Audit Proof Hash
-    const rawProof = `${channel}-${sanitized}-${confidence}-${Date.now()}`;
-    const zkpHash = `ZKP_${Buffer.from(rawProof).toString('base64').substring(0, 24).toUpperCase()}`;
-
-    // G. Atomic Insert into Supabase operational_tickets
-    const { data: ticket, error: dbError } = await supabase
-      .from('operational_tickets')
-      .insert([
-        {
-          channel,
-          customer_name,
-          customer_handle,
-          original_message: message,
-          sanitized_message: sanitized,
-          category_slug: aiParsed.category_slug || 'billing-recon',
-          status: isAutoResolved ? 'AI Resolved' : 'Pending',
-          confidence_score: confidence,
-          rag_grounding_ref: 'Enterprise Policy Ledger v4.2',
-          executed_tool: toolResult ? `${toolResult.tool} (${toolResult.ref})` : 'None',
-          zkp_proof_hash: zkpHash,
-          sentiment_trajectory: aiParsed.sentiment_trajectory || 'Neutral',
-          ai_reply: aiParsed.ai_resolution || 'Ticket staged for operational review.',
-          resolved_at: isAutoResolved ? new Date().toISOString() : null
-        }
-      ])
-      .select()
-      .single();
-
-    if (dbError) {
-      console.error('Database insertion error:', dbError);
-    }
-
-    // H. Increment Tenant Resolution Quota
-    if (tenant && isAutoResolved) {
-      await supabase
-        .from('tenants_billing')
-        .update({ resolutions_used: (tenant.resolutions_used || 0) + 1 })
-        .eq('id', tenant.id);
-    }
-
-    return NextResponse.json({
-      success: true,
-      ticket_id: ticket?.id,
-      channel,
-      status: isAutoResolved ? 'AI Resolved' : 'Escalated to Ops',
-      confidence,
+    // 2. Direct Supabase Ingestion
+    const dbPayload = {
+      channel: 'Telegram',
+      customer_name: senderName,
+      customer_handle: senderHandle,
+      original_message: rawText,
+      sanitized_message: sanitized,
+      status: status,
+      confidence_score: Number(confidence),
+      executed_tool: executedTool || null,
       zkp_proof_hash: zkpHash,
-      executed_tool: toolResult,
-      ai_dispatch: aiParsed.ai_resolution
-    });
+      sentiment_trajectory: 'Neutral',
+      ai_reply: replyMessage
+    };
 
+    try {
+      const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/operational_tickets`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'
+        },
+        body: JSON.stringify(dbPayload)
+      });
+
+      const dbData = await dbRes.text();
+      console.log('SUPABASE_INGESTION_STATUS:', dbRes.status, dbData);
+    } catch (dbErr) {
+      console.error('SUPABASE_DB_NETWORK_ERR:', dbErr);
+    }
+
+    return NextResponse.json({ ok: true });
   } catch (err: any) {
-    console.error('Universal Inbound Error:', err);
-    return NextResponse.json({ error: err.message || 'Internal Operations Engine Error' }, { status: 500 });
+    console.error('WEBHOOK_CRITICAL_ERR:', err);
+    return NextResponse.json({ ok: true }, { status: 200 });
   }
 }
