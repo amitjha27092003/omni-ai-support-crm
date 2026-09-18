@@ -64,6 +64,7 @@ export default function Dashboard() {
     },
   ]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isToastError, setIsToastError] = useState(false);
 
   const addLog = (level: "INFO" | "AGENT" | "DISPATCH", message: string) => {
     const newLog: AgentLog = {
@@ -75,11 +76,13 @@ export default function Dashboard() {
     setAgentLogs((prev) => [newLog, ...prev.slice(0, 24)]);
   };
 
-  const showToast = (msg: string) => {
+  const showToast = (msg: string, isError = false) => {
     setToastMessage(msg);
+    setIsToastError(isError);
     setTimeout(() => {
       setToastMessage(null);
-    }, 3500);
+      setIsToastError(false);
+    }, 4000);
   };
 
   // Keep selected ticket in sync with loaded tickets
@@ -87,7 +90,7 @@ export default function Dashboard() {
     if (tickets.length > 0) {
       setSelectedTicket((curr) => {
         if (!curr) {
-          setReplyText(tickets[0].suggested_reply || "");
+          setReplyText(tickets[0].ai_reply || tickets[0].suggested_reply || "");
           return tickets[0];
         }
         const found = tickets.find((t) => t.id === curr.id);
@@ -131,34 +134,66 @@ export default function Dashboard() {
 
   const handleSelectTicket = (t: Ticket) => {
     setSelectedTicket(t);
-    setReplyText(t.suggested_reply || "");
-    addLog("INFO", `Ticket focused: [${t.channel}] ${t.customer}`);
+    setReplyText(t.ai_reply || t.suggested_reply || "");
+    addLog("INFO", `Ticket focused: [${t.channel}] ${t.customer_name || t.customer}`);
   };
 
   const handleSend = async () => {
-    if (!selectedTicket) return;
+    if (!selectedTicket || !replyText.trim()) return;
     setIsSending(true);
 
     try {
-      await supabase
-        .from("operational_tickets")
-        .update({ status: "Resolved", ai_reply: replyText })
-        .eq("id", selectedTicket.id);
+      // 1. Dispatch reply via /api/dispatch-reply
+      const res = await fetch("/api/dispatch-reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ticketId: selectedTicket.id,
+          chatId: selectedTicket.customer_handle,
+          message: replyText,
+        }),
+      });
 
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to dispatch reply");
+      }
+
+      // 2. Update local state with resolved status
+      const now = new Date().toISOString();
       setTickets((prev) =>
         prev.map((t) =>
           t.id === selectedTicket.id
-            ? { ...t, status: "Resolved", suggested_reply: replyText, slaMinutesLeft: 0 }
+            ? {
+                ...t,
+                status: "Resolved",
+                ai_reply: replyText,
+                suggested_reply: replyText,
+                slaMinutesLeft: 0,
+                resolved_at: now,
+              }
             : t
         )
       );
       setSelectedTicket((prev) =>
-        prev ? { ...prev, status: "Resolved", suggested_reply: replyText, slaMinutesLeft: 0 } : null
+        prev
+          ? {
+              ...prev,
+              status: "Resolved",
+              ai_reply: replyText,
+              suggested_reply: replyText,
+              slaMinutesLeft: 0,
+              resolved_at: now,
+            }
+          : null
       );
-      addLog("DISPATCH", `Dispatched response to ${selectedTicket.customer}`);
-      showToast(`Response dispatched to ${selectedTicket.channel}!`);
-    } catch (err) {
-      console.error(err);
+
+      addLog("DISPATCH", `Dispatched response to ${selectedTicket.customer_name || selectedTicket.customer}`);
+      showToast("Reply sent to Telegram");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Dispatch failed";
+      console.error("[handleSend] Error:", err);
+      showToast(`Dispatch failed: ${msg}`, true);
     } finally {
       setIsSending(false);
     }
@@ -363,6 +398,7 @@ export default function Dashboard() {
                     onEscalate={handleEscalate}
                     onPreviewDispatch={() => setShowPreviewModal(true)}
                     isSending={isSending}
+                    onShowToast={showToast}
                   />
                 </div>
               </div>
@@ -407,7 +443,7 @@ export default function Dashboard() {
       />
 
       {/* Toast Notification */}
-      <ToastNotification message={toastMessage} />
+      <ToastNotification message={toastMessage} isError={isToastError} />
     </div>
   );
 }

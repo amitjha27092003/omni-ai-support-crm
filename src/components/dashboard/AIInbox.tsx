@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Sparkles,
@@ -14,6 +14,9 @@ import {
   Smartphone,
   Cpu,
   Tag,
+  RotateCw,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { StatusPill } from "@/components/ui/StatusPill";
@@ -27,6 +30,13 @@ interface AIInboxProps {
   onEscalate: () => void;
   onPreviewDispatch?: () => void;
   isSending?: boolean;
+  onShowToast?: (message: string, isError?: boolean) => void;
+}
+
+interface OutboundMessage {
+  id: string;
+  text: string;
+  time: string;
 }
 
 export function AIInbox({
@@ -37,8 +47,86 @@ export function AIInbox({
   onEscalate,
   onPreviewDispatch,
   isSending = false,
+  onShowToast,
 }: AIInboxProps) {
   const [activeTab, setActiveTab] = useState<"reply" | "audit">("reply");
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [optimisticThread, setOptimisticThread] = useState<Record<string, OutboundMessage[]>>({});
+
+  // Reset or initialize draft when ticket changes
+  useEffect(() => {
+    if (ticket && !replyText && ticket.ai_reply) {
+      onReplyTextChange(ticket.ai_reply);
+    }
+  }, [ticket?.id]);
+
+  // AI Draft Generator via Gemini 2.0 Flash
+  const handleGenerateAIDraft = async () => {
+    if (!ticket) return;
+    setIsGeneratingAI(true);
+
+    try {
+      const inbound = ticket.sanitized_message || ticket.original_message || "";
+      const res = await fetch("/api/generate-reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ticketId: ticket.id,
+          conversation: inbound,
+          customerName: ticket.customer_name || "Customer",
+        }),
+      });
+
+      const data = await res.json();
+      if (data.draft) {
+        onReplyTextChange(data.draft);
+        if (onShowToast) {
+          onShowToast(data.isFallback ? "AI draft generated (heuristic)" : "✨ Gemini 2.0 Flash draft synthesized!");
+        }
+      } else if (data.error) {
+        if (onShowToast) onShowToast(`Gemini error: ${data.error}`, true);
+      }
+    } catch (err: unknown) {
+      console.error("AI Draft Generation Error:", err);
+      if (onShowToast) onShowToast("Failed to generate AI draft", true);
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
+
+  const handleClearReply = () => {
+    onReplyTextChange("");
+  };
+
+  // Keyboard shortcut: Cmd/Ctrl + Enter to send
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      if (replyText.trim() && !isSending) {
+        handleDispatch();
+      }
+    }
+  };
+
+  // Dispatch reply handler with optimistic append
+  const handleDispatch = async () => {
+    if (!ticket || !replyText.trim() || isSending) return;
+
+    // Optimistically record outbound message
+    const currentTicketId = ticket.id;
+    const dispatchedText = replyText;
+    const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+    setOptimisticThread((prev) => ({
+      ...prev,
+      [currentTicketId]: [
+        ...(prev[currentTicketId] || []),
+        { id: `opt-${Date.now()}`, text: dispatchedText, time: now },
+      ],
+    }));
+
+    onSendReply();
+  };
 
   if (!ticket) {
     return (
@@ -58,6 +146,8 @@ export function AIInbox({
   const isResolved = ticket.status === "Resolved" || ticket.status === "AI Resolved";
   const isEscalated = ticket.status === "Escalated";
   const inboundMessage = ticket.sanitized_message || ticket.original_message || "No message content available.";
+  const estimatedTokens = Math.max(0, Math.round((replyText.length || 0) / 3.8));
+  const currentOutboundList = optimisticThread[ticket.id] || [];
 
   return (
     <div className="flex-1 flex flex-col glass-panel rounded-2xl overflow-hidden border border-white/10 dark:border-white/[0.08] shadow-2xl h-full">
@@ -152,6 +242,41 @@ export function AIInbox({
           </motion.div>
         )}
 
+        {/* Existing Persisted AI Reply (if already resolved) */}
+        {ticket.ai_reply && (
+          <div className="flex justify-end">
+            <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-gradient-to-br from-[#1E3A8A]/80 to-[#2563EB]/80 border border-blue-400/30 p-3.5 text-xs text-white shadow-lg space-y-1">
+              <div className="flex items-center gap-1.5 text-[10px] text-blue-200 font-semibold">
+                <Zap className="w-3 h-3 text-[#FF9933] fill-current" />
+                <span>OmniAI Dispatched Response</span>
+              </div>
+              <p className="leading-relaxed">{ticket.ai_reply}</p>
+              <div className="text-[9px] text-blue-200/70 text-right">
+                {ticket.resolved_at ? new Date(ticket.resolved_at).toLocaleTimeString() : "Delivered"}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Optimistically Appended Outbound Messages */}
+        {currentOutboundList.map((msg) => (
+          <motion.div
+            key={msg.id}
+            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            className="flex justify-end"
+          >
+            <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-gradient-to-br from-[#FF9933]/90 to-[#EA580C]/90 border border-[#FFB066]/40 p-3.5 text-xs text-white shadow-xl space-y-1">
+              <div className="flex items-center gap-1.5 text-[10px] text-amber-100 font-semibold">
+                <Send className="w-3 h-3" />
+                <span>Outbound Dispatched to Telegram</span>
+              </div>
+              <p className="leading-relaxed">{msg.text}</p>
+              <div className="text-[9px] text-amber-100/80 text-right">{msg.time} • Sent</div>
+            </div>
+          </motion.div>
+        ))}
+
         {/* ZKP Audit Proof context (if present) */}
         {ticket.kb_context && (
           <div className="bg-[#1E3A8A]/20 border border-[#3B82F6]/30 rounded-2xl p-3.5 text-xs flex items-start gap-3 text-slate-300 max-w-2xl">
@@ -179,17 +304,48 @@ export function AIInbox({
       {/* Reply Drafting Box */}
       <div className="p-5 sm:p-6 border-t border-white/10 bg-white/[0.02] space-y-3.5">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* ✨ Generate AI Draft Button */}
             <button
-              onClick={() => setActiveTab("reply")}
-              className="flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-lg bg-[#FF9933]/15 text-[#FFB066] border border-[#FF9933]/30 shadow-xs"
+              onClick={handleGenerateAIDraft}
+              disabled={isGeneratingAI}
+              className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#FF9933] via-[#FF8008] to-[#EA580C] text-white shadow-md shadow-[#FF9933]/25 hover:shadow-[#FF9933]/40 border border-[#FFB066]/30 transition-all active:scale-95 disabled:opacity-50"
             >
-              <Sparkles className="w-3.5 h-3.5 text-[#FF9933]" />
-              <span>AI Suggested Response</span>
+              <Sparkles className="w-3.5 h-3.5 text-white" />
+              <span>{isGeneratingAI ? "Gemini is thinking..." : "✨ Generate AI Draft"}</span>
             </button>
+
+            {/* Regenerate Button */}
+            <button
+              onClick={handleGenerateAIDraft}
+              disabled={isGeneratingAI}
+              title="Regenerate draft with Gemini 2.0 Flash"
+              className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 transition"
+            >
+              <RotateCw className={`w-3.5 h-3.5 ${isGeneratingAI ? "animate-spin text-[#FF9933]" : ""}`} />
+            </button>
+
+            {/* Clear Button */}
+            {replyText && (
+              <button
+                onClick={handleClearReply}
+                title="Clear draft"
+                className="p-1.5 rounded-xl bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 border border-white/10 transition"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+
             <span className="text-[11px] font-semibold bg-[#10B981]/15 text-[#34D399] border border-[#10B981]/30 px-2.5 py-0.5 rounded-md font-mono">
               {ticket.confidence_score}% Confidence
             </span>
+
+            {/* Token Estimate */}
+            {replyText && (
+              <span className="text-[10px] font-mono text-slate-400 bg-white/5 px-2 py-0.5 rounded border border-white/5">
+                ~{estimatedTokens} tokens
+              </span>
+            )}
           </div>
 
           <span className="text-xs text-slate-400 flex items-center gap-1.5">
@@ -198,23 +354,39 @@ export function AIInbox({
           </span>
         </div>
 
+        {/* Gemini Thinking Indicator Banner */}
+        {isGeneratingAI && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#1E3A8A]/30 border border-[#3B82F6]/40 text-xs text-[#93C5FD]"
+          >
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FF9933]" />
+            <span>Gemini 2.0 Flash is analyzing inquiry context...</span>
+            <div className="flex items-center gap-1 ml-auto">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#FF9933] animate-pulse" />
+              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse delay-100" />
+              <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse delay-200" />
+            </div>
+          </motion.div>
+        )}
+
         <textarea
           rows={3}
           value={replyText}
           onChange={(e) => onReplyTextChange(e.target.value)}
-          placeholder="Customize response before outbound dispatch..."
+          onKeyDown={handleKeyDown}
+          placeholder="Customize response before outbound dispatch... (Press Cmd/Ctrl + Enter to send)"
           className="w-full bg-black/30 border border-white/10 rounded-2xl p-4 text-xs sm:text-sm text-white focus:outline-none focus:border-[#FF9933]/60 focus:ring-1 focus:ring-[#FF9933]/40 resize-none transition custom-scrollbar font-sans"
         />
 
         <div className="flex items-center justify-between gap-4">
-          <div className="text-[11px] text-slate-400">
-            {isResolved ? (
-              <span className="text-[#10B981] flex items-center gap-1 font-semibold">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Already Resolved & Dispatched
-              </span>
-            ) : (
-              <span>Edit reply or click dispatch to trigger outbound transmission</span>
-            )}
+          <div className="text-[11px] text-slate-400 flex items-center gap-2">
+            <kbd className="hidden sm:inline-block px-1.5 py-0.5 rounded bg-white/10 border border-white/15 text-[10px] font-mono text-slate-300">
+              Ctrl + Enter
+            </kbd>
+            <span>to dispatch to Telegram</span>
           </div>
 
           <GradientButton
@@ -222,7 +394,7 @@ export function AIInbox({
             size="md"
             icon={<Send className="w-4 h-4" />}
             isLoading={isSending}
-            onClick={onSendReply}
+            onClick={handleDispatch}
             disabled={!replyText.trim() || isSending}
           >
             Dispatch Reply

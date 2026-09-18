@@ -12,6 +12,7 @@ import {
   ChevronDown,
   ChevronUp,
   CheckCircle2,
+  AlertTriangle,
   ShieldCheck,
   Send,
   Zap,
@@ -295,11 +296,13 @@ export function TelemetryDrawer({ isOpen, onToggle, logs }: TelemetryDrawerProps
   );
 }
 
-// ═══════════════════════════════════════════════════
-// 4. TOAST NOTIFICATION
-// ═══════════════════════════════════════════════════
-
-export function ToastNotification({ message }: { message: string | null }) {
+export function ToastNotification({
+  message,
+  isError = false,
+}: {
+  message: string | null;
+  isError?: boolean;
+}) {
   if (!message) return null;
 
   return (
@@ -307,9 +310,17 @@ export function ToastNotification({ message }: { message: string | null }) {
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 20, scale: 0.95 }}
-      className="fixed bottom-14 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl glass-panel border border-[#10B981]/40 text-white text-xs font-semibold shadow-2xl shadow-emerald-500/20"
+      className={`fixed bottom-14 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl glass-panel border text-white text-xs font-semibold shadow-2xl ${
+        isError
+          ? "border-rose-500/50 shadow-rose-500/25 text-rose-200"
+          : "border-[#10B981]/40 shadow-emerald-500/20 text-white"
+      }`}
     >
-      <CheckCircle2 className="w-4 h-4 text-[#10B981] flex-shrink-0" />
+      {isError ? (
+        <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+      ) : (
+        <CheckCircle2 className="w-4 h-4 text-[#10B981] flex-shrink-0" />
+      )}
       <span>{message}</span>
     </motion.div>
   );
