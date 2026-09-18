@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 
 const TELEGRAM_BOT_TOKEN = '8600882660:AAFbSJEpimvWuLls5jsaEBXE4JmG7hfKzSc';
-const SUPABASE_URL = 'https://bpgrpmdjpydmlonbeag.supabase.co';
+const SUPABASE_URL = 'https://bpgrpmdjpdydmlonbeag.supabase.co';
 const SUPABASE_ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwZ3JwbWRqcHlkbWxvbmJlYWciLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc1MjYxMDk2MywiZXhwIjoyMDY4MTg2OTY0fQ.mIGYvcVHeCmhNGvBfbm5im1ih-r5oWkBdBFHgZ-wX0A';
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwZ3JwbWRqcGR5ZG1sb25iZWFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI2MTA5NjMsImV4cCI6MjA2ODE4Njk2NH0.mIGYvcVHeCmhNGvBfbm5im1ih-r5oWkBdBFHgZ-wX0A';
 
 function sanitizePII(text: string) {
   let masked = text;
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
     const isRefund = /refund|money back|transaction|payment/i.test(sanitized);
     const isEscalation = /fraud|urgent|legal|human|agent/i.test(sanitized);
 
-    let status = 'AI Resolved';
+    let status = 'Open';
     let confidence = 95;
     let executedTool = 'stripe_recon_agent';
     let replyMessage = '✅ Your refund request has been analyzed and processed autonomously via shadow execution.';
@@ -69,7 +69,40 @@ export async function POST(req: Request) {
       replyMessage = '🤖 Your inquiry is being analyzed by OmniAI autonomous support cluster.';
     }
 
-    // Direct Telegram Response Send
+    // 1. Supabase me data insert karo
+    const dbPayload = {
+      channel: 'Telegram',
+      customer_name: senderName,
+      customer_handle: senderHandle,
+      original_message: rawText,
+      sanitized_message: sanitized,
+      status: status,
+      confidence_score: Number(confidence),
+      executed_tool: executedTool || null,
+      zkp_proof_hash: zkpHash,
+      sentiment_trajectory: 'Neutral',
+      ai_reply: replyMessage
+    };
+
+    try {
+      const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/operational_tickets`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'
+        },
+        body: JSON.stringify(dbPayload)
+      });
+
+      const resBody = await dbRes.text();
+      console.log('SUPABASE_INGESTION_STATUS:', dbRes.status, resBody);
+    } catch (dbErr) {
+      console.error('SUPABASE_DIRECT_CALL_ERROR:', dbErr);
+    }
+
+    // 2. Telegram par reply bhejo
     if (chatId) {
       let finalReply = replyMessage;
       if (executedTool) {
@@ -95,40 +128,9 @@ export async function POST(req: Request) {
       });
     }
 
-    // Direct Supabase POST Ingestion
-    const dbPayload = {
-      channel: 'Telegram',
-      customer_name: senderName,
-      customer_handle: senderHandle,
-      original_message: rawText,
-      sanitized_message: sanitized,
-      status: status,
-      confidence_score: confidence,
-      executed_tool: executedTool || null,
-      zkp_proof_hash: zkpHash,
-      sentiment_trajectory: 'Neutral',
-      ai_reply: replyMessage
-    };
-
-    const targetUrl = 'https://bpgrpmdjpydmlonbeag.supabase.co/rest/v1/operational_tickets';
-
-    const dbRes = await fetch(targetUrl, {
-      method: 'POST',
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal'
-      },
-      body: JSON.stringify(dbPayload)
-    });
-
-    const dbResultText = await dbRes.text();
-    console.log('SUPABASE_DIRECT_STATUS:', dbRes.status, dbResultText);
-
     return NextResponse.json({ ok: true });
   } catch (err: any) {
-    console.error('CRITICAL_WEBHOOK_ERROR:', err);
+    console.error('WEBHOOK_CRITICAL_ERR:', err);
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 }
