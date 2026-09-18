@@ -17,8 +17,68 @@ function sanitizePII(text: string) {
 export async function POST(req: Request) {
   try {
     const update = await req.json();
-    const msg = update.message || update.edited_message;
 
+    // 1. Inline Button Callback Handling
+    if (update.callback_query) {
+      const callback = update.callback_query;
+      const callbackData = callback.data || '';
+      const cbChatId = callback.message?.chat?.id;
+      const callbackQueryId = callback.id;
+
+      let newStatus = 'Open';
+      let confirmationText = 'Status updated.';
+
+      if (callbackData.startsWith('ack_')) {
+        newStatus = 'Resolved';
+        confirmationText = '✅ Ticket marked as Resolved by user.';
+      } else if (callbackData.startsWith('agent_')) {
+        newStatus = 'Escalated';
+        confirmationText = '👤 Ticket escalated to a Human Agent.';
+      }
+
+      const ticketId = callbackData.split(':')[1];
+
+      if (ticketId) {
+        // Update ticket in Supabase
+        await fetch(`${SUPABASE_URL}/rest/v1/operational_tickets?id=eq.${ticketId}`, {
+          method: 'PATCH',
+          headers: {
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            'Content-Type': 'application/json',
+            Prefer: 'return=minimal'
+          },
+          body: JSON.stringify({ status: newStatus })
+        });
+      }
+
+      // Acknowledge callback to remove loading state in Telegram
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          callback_query_id: callbackQueryId,
+          text: confirmationText
+        })
+      });
+
+      if (cbChatId) {
+        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: cbChatId,
+            text: `🔔 *Update:* ${confirmationText}`,
+            parse_mode: 'Markdown'
+          })
+        });
+      }
+
+      return NextResponse.json({ ok: true });
+    }
+
+    // 2. Incoming Ticket Messages
+    const msg = update.message || update.edited_message;
     if (!msg || !msg.text) {
       return NextResponse.json({ ok: true });
     }
@@ -33,7 +93,7 @@ export async function POST(req: Request) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
-            text: '👋 *OmniAI Ops Bot Connected!*\n\nSend your ticket inquiry to begin.',
+            text: '👋 *OmniAI Ops Bot Connected!*\n\nSend your issue or inquiry directly here.',
             parse_mode: 'Markdown'
           })
         });
@@ -52,7 +112,7 @@ export async function POST(req: Request) {
     const isRefund = /refund|money back|transaction|payment/i.test(sanitized);
     const isEscalation = /fraud|urgent|legal|human|agent/i.test(sanitized);
 
-    let status = 'Open';
+    let status = 'AI Resolved';
     let confidence = 95;
     let executedTool = 'stripe_recon_agent';
     let replyMessage = '✅ Your refund request has been analyzed and processed autonomously via shadow execution.';
@@ -69,7 +129,6 @@ export async function POST(req: Request) {
       replyMessage = '🤖 Your inquiry is being analyzed by OmniAI autonomous support cluster.';
     }
 
-    // 1. Direct Supabase Ingestion via Service Role Key (Bypasses all RLS / Anon restrictions)
     const dbPayload = {
       channel: 'Telegram',
       customer_name: senderName,
@@ -84,25 +143,27 @@ export async function POST(req: Request) {
       ai_reply: replyMessage
     };
 
+    let insertedId = '';
     try {
       const dbRes = await fetch(`${SUPABASE_URL}/rest/v1/operational_tickets`, {
         method: 'POST',
         headers: {
-          'apikey': SUPABASE_SERVICE_ROLE_KEY,
-          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
           'Content-Type': 'application/json',
-          'Prefer': 'return=representation'
+          Prefer: 'return=representation'
         },
         body: JSON.stringify(dbPayload)
       });
 
-      const resBody = await dbRes.text();
-      console.log('SUPABASE_INGESTION_STATUS:', dbRes.status, resBody);
+      const resBody = await dbRes.json();
+      if (Array.isArray(resBody) && resBody[0]?.id) {
+        insertedId = resBody[0].id;
+      }
     } catch (dbErr) {
       console.error('SUPABASE_FETCH_ERR:', dbErr);
     }
 
-    // 2. Telegram Response Dispatch
     if (chatId) {
       let finalReply = replyMessage;
       if (executedTool) {
@@ -119,8 +180,8 @@ export async function POST(req: Request) {
           reply_markup: {
             inline_keyboard: [
               [
-                { text: '✅ Acknowledge', callback_data: 'ack_ok' },
-                { text: '👤 Human Agent', callback_data: 'talk_agent' }
+                { text: '✅ Acknowledge', callback_data: `ack_${insertedId ? `:${insertedId}` : ''}` },
+                { text: '👤 Human Agent', callback_data: `agent_${insertedId ? `:${insertedId}` : ''}` }
               ]
             ]
           }
