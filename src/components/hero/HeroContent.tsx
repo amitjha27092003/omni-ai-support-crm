@@ -3,7 +3,7 @@
 import React from "react";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
-import { Sparkles, BarChart3, Bot, ShieldCheck, Zap } from "lucide-react";
+import { Sparkles, BarChart3, ShieldCheck, Zap } from "lucide-react";
 import { GradientButton } from "@/components/ui/GradientButton";
 
 // Dynamically import 3D canvas with SSR disabled
@@ -32,15 +32,15 @@ export function HeroContent({
   const headlineWords = "Intelligent Support. Infinite Scale.".split(" ");
 
   return (
-    <div className="relative w-full rounded-3xl overflow-hidden glass-panel border border-white/10 dark:border-white/[0.08] shadow-2xl p-6 sm:p-10 mb-8 tricolor-hairline-top">
+    <div className="relative w-full rounded-3xl overflow-hidden glass-panel border border-white/10 dark:border-white/[0.08] shadow-2xl p-4 xs:p-6 sm:p-8 md:p-10 mb-6 sm:mb-8 tricolor-hairline-top">
       {/* Background glow blobs */}
       <div className="absolute -top-24 -left-24 w-80 h-80 bg-[#FF9933]/15 rounded-full blur-[90px] pointer-events-none" />
       <div className="absolute top-1/2 left-1/3 w-96 h-96 bg-[#1E3A8A]/20 rounded-full blur-[100px] pointer-events-none" />
       <div className="absolute -bottom-24 -right-24 w-80 h-80 bg-[#10B981]/15 rounded-full blur-[90px] pointer-events-none" />
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-center relative z-10">
         {/* Left Headline & Content */}
-        <div className="lg:col-span-7 space-y-6">
+        <div className="lg:col-span-7 space-y-4 sm:space-y-6">
           {/* Badge */}
           <motion.div
             initial={{ opacity: 0, y: -10 }}
@@ -57,7 +57,7 @@ export function HeroContent({
           </motion.div>
 
           {/* Staggered Word Reveal Headline */}
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.12]">
+          <h1 className="text-2xl xs:text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.12]">
             {headlineWords.map((word, idx) => (
               <motion.span
                 key={idx}
@@ -100,16 +100,7 @@ export function HeroContent({
             <GradientButton
               variant="saffron"
               size="md"
-              icon={<Bot className="w-4 h-4" />}
-              onClick={onOpenInbox}
-            >
-              Open AI Inbox
-            </GradientButton>
-
-            <GradientButton
-              variant="glass"
-              size="md"
-              icon={<BarChart3 className="w-4 h-4 text-[#60A5FA]" />}
+              icon={<BarChart3 className="w-4 h-4 text-white" />}
               onClick={onOpenAnalytics}
             >
               View Analytics
@@ -146,7 +137,7 @@ export function HeroContent({
         </div>
 
         {/* Right 3D Ashoka Chakra Torus */}
-        <div className="lg:col-span-5 h-[340px] sm:h-[420px] relative flex items-center justify-center">
+        <div className="lg:col-span-5 h-[260px] sm:h-[340px] md:h-[420px] relative flex items-center justify-center">
           <Hero3D />
         </div>
       </div>

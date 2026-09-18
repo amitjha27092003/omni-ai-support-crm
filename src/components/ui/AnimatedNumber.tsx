@@ -39,8 +39,7 @@ export function AnimatedNumber({
   useEffect(() => {
     const unsubscribe = springVal.on("change", (latest) => {
       if (ref.current) {
-        const rounded = Math.round(latest);
-        const formatted = format ? format(rounded) : rounded.toLocaleString();
+        const formatted = format ? format(latest) : Math.round(latest).toLocaleString();
         ref.current.textContent = `${prefix}${formatted}${suffix}`;
       }
     });

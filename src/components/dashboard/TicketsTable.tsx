@@ -12,6 +12,7 @@ import {
   AlertCircle,
   Tag,
   CheckCircle2,
+  Globe,
 } from "lucide-react";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { LoadingSkeleton } from "./LoadingSkeleton";
@@ -158,25 +159,40 @@ export function TicketsTable({
                 onClick={() => onSelectTicket(t)}
                 whileHover={{ x: 3 }}
                 transition={{ duration: 0.15 }}
-                className={`p-4 cursor-pointer transition-all duration-200 relative ${
+                className={`p-4 sm:p-4.5 cursor-pointer transition-all duration-200 relative min-h-[56px] ${
                   isSelected
-                    ? "bg-white/10 dark:bg-white/[0.08] border-l-4 border-l-[#FF9933] shadow-md"
+                    ? t.status === "Escalated"
+                      ? "bg-rose-500/15 border-l-4 border-l-rose-500 shadow-lg shadow-rose-500/10"
+                      : "bg-white/10 dark:bg-white/[0.08] border-l-4 border-l-[#FF9933] shadow-md"
+                    : t.status === "Escalated"
+                    ? "bg-rose-500/[0.07] border-l-2 border-l-rose-500/80 hover:bg-rose-500/12"
                     : "hover:bg-white/5 hover:border-l-2 hover:border-l-[#3B82F6]/50"
                 }`}
               >
-                {/* Top Row: Customer Name + Handle + Timestamp */}
-                <div className="flex items-center justify-between mb-1.5 gap-2">
-                  <div className="flex items-center gap-1.5 truncate max-w-[200px]">
-                    <span className="font-semibold text-xs text-white truncate">
+                {/* Top Row: Customer Name + Handle + Escalated Badge + Timestamp */}
+                <div className="flex items-center justify-between mb-2 gap-2">
+                  <div className="flex items-center gap-2 truncate max-w-[160px] xs:max-w-[210px] sm:max-w-[260px]">
+                    <span className="font-bold text-sm text-white truncate">
                       {t.customer_name || "Telegram User"}
                     </span>
                     {t.customer_handle && (
-                      <span className="text-[10px] text-slate-400 truncate">
+                      <span className="text-xs text-slate-400 truncate hidden xs:inline font-mono">
                         {t.customer_handle.startsWith("@") ? t.customer_handle : `@${t.customer_handle}`}
                       </span>
                     )}
+
+                    {/* 🚨 Escalated Badge with pulsing dot */}
+                    {t.status === "Escalated" && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/25 text-rose-300 border border-rose-500/40 shadow-xs shadow-rose-500/30 flex-shrink-0 animate-pulse">
+                        <span className="relative flex h-1.5 w-1.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-rose-500" />
+                        </span>
+                        <span>🚨 Escalated</span>
+                      </span>
+                    )}
                   </div>
-                  <span className="text-[10px] text-slate-400 font-mono flex-shrink-0">
+                  <span className="text-xs text-slate-400 font-mono flex-shrink-0">
                     {new Date(t.created_at).toLocaleTimeString([], {
                       hour: "2-digit",
                       minute: "2-digit",
@@ -185,36 +201,44 @@ export function TicketsTable({
                 </div>
 
                 {/* Message Body (sanitized_message, fallback original_message) */}
-                <p className="text-xs text-slate-300 dark:text-slate-300 line-clamp-2 mb-2 leading-relaxed font-normal">
+                <p className="text-xs sm:text-sm text-slate-200 dark:text-slate-200 line-clamp-2 mb-2.5 leading-relaxed font-normal">
                   {displayText}
                 </p>
 
                 {/* AI Reply snippet preview if available */}
                 {t.ai_reply && (
-                  <div className="mb-2 text-[11px] text-blue-300/80 bg-blue-500/10 border border-blue-500/20 rounded-lg px-2 py-1 line-clamp-1">
+                  <div className="mb-2.5 text-xs text-blue-200/90 bg-blue-500/10 border border-blue-500/20 rounded-xl px-2.5 py-1.5 line-clamp-1 leading-relaxed">
                     <span className="text-[#FF9933] font-semibold">AI:</span> {t.ai_reply}
                   </div>
                 )}
 
                 {/* Bottom Row: Channel badge + Category slug + Status pill */}
-                <div className="flex items-center justify-between gap-2 pt-1">
-                  <div className="flex items-center gap-1.5 flex-wrap">
+                <div className="flex items-center justify-between gap-2 pt-1.5 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span
-                      className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md border ${channelStyle}`}
+                      className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-0.5 rounded-md border ${channelStyle}`}
                     >
-                      <ChannelIcon className="w-2.5 h-2.5" />
+                      <ChannelIcon className="w-3 h-3" />
                       {t.channel}
                     </span>
 
                     {/* Category Slug Badge */}
-                    <span className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded bg-white/5 text-slate-400 border border-white/10">
-                      <Tag className="w-2.5 h-2.5 text-slate-500" />
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md bg-white/5 text-slate-300 border border-white/10">
+                      <Tag className="w-3 h-3 text-slate-400" />
                       {t.category_slug || "Uncategorized"}
                     </span>
 
+                    {/* Language Tag */}
+                    {t.detected_language && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md bg-white/5 text-slate-300 border border-white/10">
+                        <Globe className="w-3 h-3 text-[#60A5FA]" />
+                        <span>{t.detected_language}</span>
+                      </span>
+                    )}
+
                     {/* Confidence Score Pill */}
                     {t.confidence_score > 0 && (
-                      <span className="text-[9px] font-mono text-emerald-400 px-1 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/20">
+                      <span className="text-[10px] font-mono text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
                         {t.confidence_score}%
                       </span>
                     )}

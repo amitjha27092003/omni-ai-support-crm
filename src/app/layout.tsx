@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -20,6 +20,15 @@ export const metadata: Metadata = {
   title: "OmniAI Ops — Ultra-Premium 3D Support Dashboard",
   description:
     "Cinematic, 3D-animated AI customer support command center inspired by Indian-futurist aesthetics, Supabase Realtime, and Gemini 2.5.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1.0,
+  maximumScale: 5.0,
+  userScalable: true,
+  viewportFit: "cover",
+  themeColor: "#0A0A0F",
 };
 
 export default function RootLayout({

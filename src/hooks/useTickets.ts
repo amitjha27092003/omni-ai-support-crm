@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { detectLanguageHeuristic } from "@/lib/languageDetection";
 
 export interface Ticket {
   id: string;
@@ -29,6 +30,10 @@ export interface Ticket {
   created_at: string;
   resolved_at?: string | null;
   chat_id?: string | number | null;
+  detected_language?: string | null;
+  detected_language_iso?: string | null;
+  english_translation?: string | null;
+  target_response_language?: string | null;
   tool_action?: {
     toolName: string;
     actionTaken: boolean;
@@ -77,6 +82,12 @@ export const mapDbTicketToUi = (dbRow: Record<string, any>): Ticket => {
     created_at: dbRow.created_at || new Date().toISOString(),
     resolved_at: dbRow.resolved_at || null,
     chat_id: dbRow.chat_id ? String(dbRow.chat_id) : null,
+    detected_language:
+      dbRow.detected_language || detectLanguageHeuristic(displayText).name,
+    detected_language_iso:
+      dbRow.detected_language_iso || detectLanguageHeuristic(displayText).iso,
+    english_translation: dbRow.english_translation || null,
+    target_response_language: dbRow.target_response_language || "auto",
     tool_action: dbRow.executed_tool
       ? {
           toolName: dbRow.executed_tool,
@@ -97,18 +108,40 @@ export function useTickets() {
   const fetchTickets = useCallback(async () => {
     try {
       setError(null);
-      console.log("[useTickets] Fetching initial 100 tickets with explicit column projection...");
-      const { data, error: sbError } = await supabase
+      console.log("[useTickets] Fetching initial 100 tickets with multilingual projection...");
+      
+      // Try full multilingual projection first
+      let data: any[] | null = null;
+      let queryError: { message: string } | null = null;
+
+      const res = await supabase
         .from("operational_tickets")
         .select(
-          "id, channel, customer_name, customer_handle, original_message, sanitized_message, category_slug, status, confidence_score, ai_reply, created_at, resolved_at, chat_id"
+          "id, channel, customer_name, customer_handle, original_message, sanitized_message, category_slug, status, confidence_score, ai_reply, created_at, resolved_at, chat_id, detected_language, detected_language_iso, english_translation, target_response_language"
         )
         .order("created_at", { ascending: false })
         .limit(100);
 
-      if (sbError) {
-        console.error("[useTickets] Supabase fetch error:", sbError);
-        setError(sbError.message);
+      // If migration 004 has not yet been run, fallback to standard columns
+      if (res.error && res.error.message.includes("column")) {
+        console.warn("[useTickets] Falling back to baseline columns while migration 004 is pending...");
+        const fallbackRes = await supabase
+          .from("operational_tickets")
+          .select(
+            "id, channel, customer_name, customer_handle, original_message, sanitized_message, category_slug, status, confidence_score, ai_reply, created_at, resolved_at, chat_id"
+          )
+          .order("created_at", { ascending: false })
+          .limit(100);
+        data = fallbackRes.data;
+        queryError = fallbackRes.error;
+      } else {
+        data = res.data;
+        queryError = res.error;
+      }
+
+      if (queryError) {
+        console.error("[useTickets] Supabase fetch error:", queryError);
+        setError(queryError.message);
         setSyncMode("polling");
         return;
       }

@@ -69,7 +69,7 @@ export function Sidebar({
 
   return (
     <aside
-      className={`relative flex flex-col justify-between glass-panel transition-all duration-300 z-30 border-r border-white/10 dark:border-white/[0.08] ${
+      className={`hidden lg:flex relative flex-col justify-between glass-panel transition-all duration-300 z-30 border-r border-white/10 dark:border-white/[0.08] flex-shrink-0 ${
         isCollapsed ? "w-20 p-3" : "w-64 p-5"
       }`}
     >

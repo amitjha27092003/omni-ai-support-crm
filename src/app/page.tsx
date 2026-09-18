@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useTickets, type Ticket } from "@/hooks/useTickets";
+import { useTelemetry } from "@/hooks/useTelemetry";
 import { Navbar } from "@/components/layout/Navbar";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Footer } from "@/components/layout/Footer";
@@ -19,9 +20,11 @@ import {
   type AgentLog,
   type KBArticle,
 } from "@/components/dashboard/Modals";
+import { playEscalationChime } from "@/lib/sound";
 
 export default function Dashboard() {
   const { tickets, setTickets, loading, error, refetch, syncMode } = useTickets();
+  const telemetry = useTelemetry();
 
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [replyText, setReplyText] = useState("");
@@ -30,9 +33,23 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isAutoPiloting, setIsAutoPiloting] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const prevEscalatedCountRef = React.useRef<number | null>(null);
+
+  // Auto-play chime when new ticket escalates
+  useEffect(() => {
+    const currentEscalated = tickets.filter((t) => t.status === "Escalated").length;
+    if (prevEscalatedCountRef.current !== null && currentEscalated > prevEscalatedCountRef.current) {
+      if (soundEnabled) {
+        playEscalationChime();
+      }
+    }
+    prevEscalatedCountRef.current = currentEscalated;
+  }, [tickets, soundEnabled]);
 
   // Layout & Modals
   const [currentView, setCurrentView] = useState<"tickets" | "analytics" | "kb" | "customers">("tickets");
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [showKBModal, setShowKBModal] = useState(false);
   const [showTerminalDrawer, setShowTerminalDrawer] = useState(false);
@@ -135,6 +152,7 @@ export default function Dashboard() {
   const handleSelectTicket = (t: Ticket) => {
     setSelectedTicket(t);
     setReplyText(t.ai_reply || t.suggested_reply || "");
+    setMobileDetailOpen(true);
     addLog("INFO", `Ticket focused: [${t.channel}] ${t.customer_name || t.customer}`);
   };
 
@@ -150,6 +168,7 @@ export default function Dashboard() {
         body: JSON.stringify({
           ticketId: selectedTicket.id,
           chatId: selectedTicket.chat_id || undefined,
+          text: replyText,
           message: replyText,
         }),
       });
@@ -220,6 +239,34 @@ export default function Dashboard() {
       showToast(`Ticket escalated to Tier-2`);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleAcknowledge = async (ticketId?: string) => {
+    const targetId = ticketId || selectedTicket?.id;
+    if (!targetId) return;
+
+    try {
+      const { error: patchErr } = await supabase
+        .from("operational_tickets")
+        .update({ status: "In Progress" })
+        .eq("id", targetId);
+
+      if (patchErr) {
+        console.warn("Failed to update status in DB:", patchErr.message);
+      }
+
+      setTickets((prev) =>
+        prev.map((t) => (t.id === targetId ? { ...t, status: "In Progress" } : t))
+      );
+      setSelectedTicket((prev) =>
+        prev && prev.id === targetId ? { ...prev, status: "In Progress" } : prev
+      );
+
+      addLog("INFO", `Escalation acknowledged: #${targetId.slice(0, 6)} set to In Progress`);
+      showToast("Escalation acknowledged — status set to In Progress");
+    } catch (err) {
+      console.error("Acknowledge error:", err);
     }
   };
 
@@ -309,14 +356,36 @@ export default function Dashboard() {
         activeTab={currentView}
         onTabSelect={(tab) => {
           if (tab === "analytics") setCurrentView("analytics");
-          else if (tab === "inbox" || tab === "tickets") setCurrentView("tickets");
+          else if (tab === "inbox" || tab === "tickets") {
+            setCurrentView("tickets");
+            setMobileDetailOpen(false);
+          }
           else if (tab === "customers") setCurrentView("tickets");
           else if (tab === "settings") setShowKBModal(true);
         }}
-        pendingCount={stats.pending}
+        pendingCount={telemetry.activeOpen.value ?? stats.pending}
+        activeOpenCount={telemetry.activeOpen.value ?? undefined}
+        isTelemetryLoading={telemetry.isLoading}
+        escalatedTickets={tickets.filter((t) => t.status === "Escalated")}
+        onSelectTicket={(t) => {
+          setCurrentView("tickets");
+          handleSelectTicket(t);
+        }}
+        soundEnabled={soundEnabled}
+        onToggleSound={() => {
+          setSoundEnabled((prev) => {
+            const next = !prev;
+            if (next) playEscalationChime();
+            return next;
+          });
+        }}
+        onAutoPilot={handleAutoPilotResolveAll}
+        isAutoPiloting={isAutoPiloting}
+        onExportCSV={handleExportCSV}
+        onToggleTerminal={() => setShowTerminalDrawer(!showTerminalDrawer)}
       />
 
-      <div className="flex-1 flex max-w-[1600px] w-full mx-auto px-2 sm:px-6 py-4 gap-6 relative">
+      <div className="flex-1 flex max-w-[1920px] w-full mx-auto px-2 sm:px-4 lg:px-6 py-3 sm:py-4 gap-4 lg:gap-6 relative">
         {/* Left Glass Sidebar */}
         <Sidebar
           currentView={currentView}
@@ -324,9 +393,9 @@ export default function Dashboard() {
             if (view === "kb") setShowKBModal(true);
             else setCurrentView(view);
           }}
-          pendingCount={stats.pending}
+          pendingCount={telemetry.activeOpen.value ?? stats.pending}
           totalCount={stats.total}
-          resolvedCount={stats.resolved}
+          resolvedCount={telemetry.aiResolved.value ?? stats.resolved}
           escalatedCount={stats.escalated}
           isAutoPiloting={isAutoPiloting}
           onAutoPilot={handleAutoPilotResolveAll}
@@ -339,26 +408,56 @@ export default function Dashboard() {
 
         {/* Center Main Dashboard Area */}
         <main className="flex-1 flex flex-col min-w-0 pb-16">
-          {/* 3D Cinematic Hero Section */}
-          <HeroContent
-            onOpenInbox={() => setCurrentView("tickets")}
-            onOpenAnalytics={() => setCurrentView("analytics")}
-            onOpenAutoPilot={handleAutoPilotResolveAll}
-            pendingCount={stats.pending}
-          />
-
-          {/* KPI Metrics Grid */}
-          <KPIGrid
-            totalTickets={stats.total}
-            pendingTickets={stats.pending}
-            resolvedTickets={stats.resolved}
-            escalatedTickets={stats.escalated}
-            resolutionRate={stats.resolutionRate}
-          />
+          {/* 3D Cinematic Hero Section — Only displayed in Tickets view */}
+          {currentView === "tickets" && (
+            <HeroContent
+              onOpenAnalytics={() => setCurrentView("analytics")}
+              onOpenAutoPilot={handleAutoPilotResolveAll}
+              pendingCount={telemetry.activeOpen.value ?? stats.pending}
+            />
+          )}
 
           {/* View Conditional Rendering */}
           {currentView === "analytics" ? (
             <div className="space-y-6">
+              {/* Dedicated Operations Pulse Header Banner */}
+              <div className="flex flex-wrap items-center justify-between gap-4 p-4 sm:p-5 rounded-2xl glass-panel border border-white/10 bg-white/[0.02]">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                      <span className="text-saffron-gradient">Operations Pulse</span>
+                      <span className="text-slate-500 font-normal">|</span>
+                      <span className="text-slate-200">Autonomous Telemetry</span>
+                    </h2>
+                    <span className="flex h-2 w-2 relative">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-[#10B981]" />
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Real-time Supabase telemetry, triage velocity & channel density distributions
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setCurrentView("tickets")}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-slate-200 hover:text-white transition active:scale-95"
+                >
+                  <span>← Back to Support Tickets</span>
+                </button>
+              </div>
+
+              {/* 4 KPI Metrics Grid with Live Supabase Telemetry */}
+              <KPIGrid
+                telemetry={telemetry}
+                totalTickets={stats.total}
+                pendingTickets={telemetry.activeOpen.value ?? stats.pending}
+                resolvedTickets={telemetry.aiResolved.value ?? stats.resolved}
+                escalatedTickets={stats.escalated}
+                resolutionRate={stats.resolutionRate}
+              />
+
+              {/* Full Operations Velocity & Channel Density Telemetry Charts */}
               <AnalyticsCharts
                 totalTickets={stats.total}
                 resolvedTickets={stats.resolved}
@@ -368,10 +467,14 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="space-y-6">
-              {/* Main Work Area: Inbound Stream (Left) + AI Inbox / Conversation (Right) */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[580px]">
+              {/* Main Dedicated Ticket Work Area: Inbound Stream (Left) + AI Conversation Workspace (Right) */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 lg:gap-6 min-h-[780px] lg:h-[calc(100vh-160px)]">
                 {/* Tickets Table / Inbound Stream */}
-                <div className="lg:col-span-5 xl:col-span-4 h-[580px]">
+                <div
+                  className={`${
+                    mobileDetailOpen ? "hidden md:block" : "block"
+                  } md:col-span-5 xl:col-span-4 h-full min-h-[780px]`}
+                >
                   <TicketsTable
                     tickets={filteredTickets}
                     selectedTicket={selectedTicket}
@@ -389,27 +492,25 @@ export default function Dashboard() {
                 </div>
 
                 {/* AI Inbox / Active Resolution Workspace */}
-                <div className="lg:col-span-7 xl:col-span-8 h-[580px]">
+                <div
+                  className={`${
+                    !mobileDetailOpen ? "hidden md:block" : "block"
+                  } md:col-span-7 xl:col-span-8 h-full min-h-[780px]`}
+                >
                   <AIInbox
                     ticket={selectedTicket}
                     replyText={replyText}
                     onReplyTextChange={setReplyText}
                     onSendReply={handleSend}
                     onEscalate={handleEscalate}
+                    onAcknowledge={() => handleAcknowledge()}
                     onPreviewDispatch={() => setShowPreviewModal(true)}
+                    onBackToList={() => setMobileDetailOpen(false)}
                     isSending={isSending}
                     onShowToast={showToast}
                   />
                 </div>
               </div>
-
-              {/* Integrated Operations Chart Below Queue */}
-              <AnalyticsCharts
-                totalTickets={stats.total}
-                resolvedTickets={stats.resolved}
-                pendingTickets={stats.pending}
-                escalatedTickets={stats.escalated}
-              />
             </div>
           )}
         </main>

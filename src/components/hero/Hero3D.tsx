@@ -136,7 +136,7 @@ function OrbitingTricolorParticles() {
 
 export default function Hero3D() {
   return (
-    <div className="w-full h-full min-h-[360px] md:min-h-[440px] relative flex items-center justify-center">
+    <div className="w-full h-full min-h-[240px] sm:min-h-[320px] md:min-h-[440px] relative flex items-center justify-center">
       <Canvas
         camera={{ position: [0, 0, 5], fov: 45 }}
         dpr={[1, 1.5]}

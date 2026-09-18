@@ -47,44 +47,44 @@ export function AnalyticsCharts({
   ];
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 mb-8">
       {/* Main Resolution Velocity Area Chart */}
       <GlassCard
         glowColor="tricolor"
-        className="lg:col-span-8 p-6 relative overflow-hidden"
+        className="lg:col-span-8 p-4 sm:p-6 relative overflow-hidden"
       >
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-gradient-to-tr from-[#FF9933]/20 to-[#10B981]/20 border border-white/10 text-white">
-              <Activity className="w-5 h-5 text-[#FF9933]" />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 sm:mb-6">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="p-2 rounded-xl bg-gradient-to-tr from-[#FF9933]/20 to-[#10B981]/20 border border-white/10 text-white flex-shrink-0">
+              <Activity className="w-4 h-4 sm:w-5 sm:h-5 text-[#FF9933]" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white tracking-tight">
+              <h3 className="text-sm sm:text-base font-bold text-white tracking-tight">
                 Operations Velocity & Autonomous Triage
               </h3>
-              <p className="text-xs text-slate-400">
+              <p className="text-[11px] sm:text-xs text-slate-400">
                 Hourly throughput with Gemini 2.5 zero-touch resolution
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-4 text-xs">
+          <div className="flex items-center gap-3 sm:gap-4 text-xs flex-wrap">
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-[#FF9933]" />
-              <span className="text-slate-300">Incoming</span>
+              <span className="text-slate-300 text-[11px] sm:text-xs">Incoming</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-[#10B981]" />
-              <span className="text-slate-300">AI Resolved</span>
+              <span className="text-slate-300 text-[11px] sm:text-xs">AI Resolved</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-[#3B82F6]" />
-              <span className="text-slate-300">Tier-2</span>
+              <span className="text-slate-300 text-[11px] sm:text-xs">Tier-2</span>
             </div>
           </div>
         </div>
 
-        <div className="h-64 sm:h-72 w-full">
+        <div className="h-48 sm:h-64 lg:h-72 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart
               data={timelineData}
@@ -147,19 +147,19 @@ export function AnalyticsCharts({
       </GlassCard>
 
       {/* Omnichannel Distribution Card */}
-      <GlassCard glowColor="chakra" className="lg:col-span-4 p-6 flex flex-col justify-between">
+      <GlassCard glowColor="chakra" className="lg:col-span-4 p-4 sm:p-6 flex flex-col justify-between">
         <div>
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 rounded-xl bg-blue-500/15 border border-blue-500/25 text-[#60A5FA]">
-              <Radio className="w-5 h-5" />
+          <div className="flex items-center gap-2.5 sm:gap-3 mb-4 sm:mb-6">
+            <div className="p-2 rounded-xl bg-blue-500/15 border border-blue-500/25 text-[#60A5FA] flex-shrink-0">
+              <Radio className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white tracking-tight">Channel Density</h3>
-              <p className="text-xs text-slate-400">Live incoming traffic by gateway</p>
+              <h3 className="text-sm sm:text-base font-bold text-white tracking-tight">Channel Density</h3>
+              <p className="text-[11px] sm:text-xs text-slate-400">Live incoming traffic by gateway</p>
             </div>
           </div>
 
-          <div className="h-56 w-full">
+          <div className="h-44 sm:h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={channelData} layout="vertical" margin={{ left: 10, right: 20 }}>
                 <XAxis type="number" hide />

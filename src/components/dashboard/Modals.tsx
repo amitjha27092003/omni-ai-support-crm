@@ -253,31 +253,31 @@ interface TelemetryDrawerProps {
 
 export function TelemetryDrawer({ isOpen, onToggle, logs }: TelemetryDrawerProps) {
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#0A0A0F]/95 backdrop-blur-2xl border-t border-white/15 shadow-2xl transition-all duration-300">
+    <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#0A0A0F]/95 backdrop-blur-2xl border-t border-white/15 shadow-2xl transition-all duration-300 safe-bottom">
       <div
         onClick={onToggle}
-        className="px-6 py-2.5 flex items-center justify-between cursor-pointer hover:bg-white/5 transition"
+        className="px-4 sm:px-6 py-3 sm:py-2.5 min-h-[44px] flex items-center justify-between cursor-pointer hover:bg-white/5 transition"
       >
-        <div className="flex items-center gap-3 text-xs font-mono text-slate-300">
-          <Terminal className="w-4 h-4 text-[#10B981]" />
-          <span className="text-[#10B981] font-bold">Autonomous Core Telemetry</span>
-          <span className="text-slate-400 text-[11px]">• Supabase Realtime: Active</span>
-          <span className="text-slate-400 text-[11px]">• Gemini 2.5: Ready</span>
+        <div className="flex items-center gap-2 sm:gap-3 text-xs font-mono text-slate-300 truncate mr-2">
+          <Terminal className="w-4 h-4 text-[#10B981] flex-shrink-0" />
+          <span className="text-[#10B981] font-bold truncate">Autonomous Core</span>
+          <span className="text-slate-400 text-[11px] hidden sm:inline">• Supabase: Active</span>
+          <span className="text-slate-400 text-[11px] hidden md:inline">• Gemini 2.5: Ready</span>
         </div>
 
-        <div className="flex items-center gap-2 text-slate-400 text-xs">
-          <span>{isOpen ? "Hide Telemetry" : "Open Live Agent Logs"}</span>
+        <div className="flex items-center gap-1.5 sm:gap-2 text-slate-400 text-xs flex-shrink-0">
+          <span className="hidden xs:inline">{isOpen ? "Hide Telemetry" : "Agent Logs"}</span>
           {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
         </div>
       </div>
 
       {isOpen && (
-        <div className="p-4 border-t border-white/10 font-mono text-[11px] space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar bg-black/60">
+        <div className="p-3 sm:p-4 border-t border-white/10 font-mono text-[11px] space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar bg-black/60">
           {logs.map((log) => (
-            <div key={log.id} className="flex items-start gap-3">
-              <span className="text-slate-500 select-none">[{log.time}]</span>
+            <div key={log.id} className="flex items-start gap-2 sm:gap-3">
+              <span className="text-slate-500 select-none text-[10px] sm:text-[11px]">[{log.time}]</span>
               <span
-                className={`px-1.5 py-0.2 rounded text-[9px] font-bold border ${
+                className={`px-1.5 py-0.2 rounded text-[9px] font-bold border flex-shrink-0 ${
                   log.level === "AGENT"
                     ? "bg-[#FF9933]/20 text-[#FF9933] border-[#FF9933]/40"
                     : log.level === "DISPATCH"
@@ -287,7 +287,7 @@ export function TelemetryDrawer({ isOpen, onToggle, logs }: TelemetryDrawerProps
               >
                 {log.level}
               </span>
-              <span className="text-slate-200">{log.message}</span>
+              <span className="text-slate-200 break-words">{log.message}</span>
             </div>
           ))}
         </div>
@@ -310,7 +310,7 @@ export function ToastNotification({
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 20, scale: 0.95 }}
-      className={`fixed bottom-14 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl glass-panel border text-white text-xs font-semibold shadow-2xl ${
+      className={`fixed bottom-16 sm:bottom-14 left-4 right-4 sm:left-auto sm:right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl glass-panel border text-white text-xs font-semibold shadow-2xl max-w-sm sm:max-w-md mx-auto sm:mx-0 ${
         isError
           ? "border-rose-500/50 shadow-rose-500/25 text-rose-200"
           : "border-[#10B981]/40 shadow-emerald-500/20 text-white"
@@ -321,7 +321,7 @@ export function ToastNotification({
       ) : (
         <CheckCircle2 className="w-4 h-4 text-[#10B981] flex-shrink-0" />
       )}
-      <span>{message}</span>
+      <span className="truncate">{message}</span>
     </motion.div>
   );
 }
